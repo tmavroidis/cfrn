@@ -1,5 +1,4 @@
 import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -186,87 +185,81 @@ class _RadioPageState extends State<RadioPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Retro Radio', style: GoogleFonts.bungeeInline()),
+        actions: [
+          Row(
+            children: [
+              const Text('Power'),
+              Switch(
+                value: _isPowerOn,
+                onChanged: (bool value) {
+                  setState(() {
+                    _isPowerOn = value;
+                    if (!_isPowerOn) {
+                      _stopStation();
+                    }
+                  });
+                },
+              ),
+            ],
+          )
+        ],
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Container(
-              width: 300,
-              padding: const EdgeInsets.all(16.0),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.brown, width: 10),
-                borderRadius: BorderRadius.circular(10),
-                color: Colors.brown[300],
-              ),
-              child: Column(
-                children: [
-                  Text('Radio', style: GoogleFonts.bungeeInline(fontSize: 36)),
-                  SwitchListTile(
-                    title: const Text('Power'),
-                    value: _isPowerOn,
-                    onChanged: (bool value) {
-                      setState(() {
-                        _isPowerOn = value;
-                        if (!_isPowerOn) {
-                          _stopStation();
-                        }
-                      });
-                    },
-                    subtitle: Text(_playerState?.toString() ?? 'unknown state'),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: <Widget>[
+              Opacity(
+                opacity: _isPowerOn ? 1.0 : 0.4,
+                child: AbsorbPointer(
+                  absorbing: !_isPowerOn,
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 20),
+                      RotaryDial(
+                        stationCount: _stations.length,
+                        onStationSelected: _onStationTuned,
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        _isPowerOn ? (_currentlyPlayingStation ?? 'Select a station') : 'Radio Off',
+                        style: GoogleFonts.orbitron(fontSize: 14, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 20),
+                      // [FIX] Added isExpanded to DropdownButton to fix horizontal overflow
+                      DropdownButton<String>(
+                        isExpanded: true,
+                        hint: _isResolvingServer
+                            ? const Text('Finding server...')
+                            : _isLoadingCountries
+                            ? const Text('Loading countries...')
+                            : const Text('Select Country'),
+                        value: _selectedCountry,
+                        onChanged: (String? newValue) {
+                          if (newValue != null) {
+                            setState(() {
+                              _selectedCountry = newValue;
+                              _stations = [];
+                              _getStations(newValue);
+                            });
+                          }
+                        },
+                        items: _countries.map<DropdownMenuItem<String>>((dynamic value) {
+                          return DropdownMenuItem<String>(
+                            value: value['iso_3166_1'],
+                            child: Text(value['name'], overflow: TextOverflow.ellipsis),
+                          );
+                        }).toList(),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            Opacity(
-              opacity: _isPowerOn ? 1.0 : 0.4,
-              child: AbsorbPointer(
-                absorbing: !_isPowerOn,
-                child: Column(
-                  children: [
-                    RotaryDial(
-                      stationCount: _stations.length,
-                      onStationSelected: _onStationTuned,
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      _isPowerOn ? (_currentlyPlayingStation ?? 'Select a station') : 'Radio Off',
-                      style: GoogleFonts.orbitron(fontSize: 14, fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 20),
-                    DropdownButton<String>(
-                      hint: _isResolvingServer
-                          ? const Text('Finding server...')
-                          : _isLoadingCountries
-                          ? const Text('Loading countries...')
-                          : const Text('Select Country'),
-                      value: _selectedCountry,
-                      onChanged: (String? newValue) {
-                        if (newValue != null) {
-                          setState(() {
-                            _selectedCountry = newValue;
-                            _stations = [];
-                            _getStations(newValue);
-                          });
-                        }
-                      },
-                      items: _countries.map<DropdownMenuItem<String>>((dynamic value) {
-                        return DropdownMenuItem<String>(
-                          value: value['iso_3166_1'],
-                          child: Text(value['name']),
-                        );
-                      }).toList(),
-                    ),
-                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
-            Expanded(
-              child: Opacity(
+              const SizedBox(height: 20),
+              Opacity(
                 opacity: _isPowerOn ? 1.0 : 0.4,
                 child: AbsorbPointer(
                   absorbing: !_isPowerOn,
@@ -275,6 +268,8 @@ class _RadioPageState extends State<RadioPage> {
                       : _stations.isEmpty
                       ? Center(child: Text(_selectedCountry == null ? '' : 'No stations found.'))
                       : ListView.builder(
+                    shrinkWrap: true,
+                    primary: false,
                     itemCount: _stations.length,
                     itemBuilder: (context, index) {
                       final station = _stations[index];
@@ -289,15 +284,14 @@ class _RadioPageState extends State<RadioPage> {
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// [FIX] Updated RotaryDial to be a half-moon shape with frequency markings
 class RotaryDial extends StatefulWidget {
   final Function(int) onStationSelected;
   final int stationCount;
@@ -313,131 +307,112 @@ class RotaryDial extends StatefulWidget {
 }
 
 class _RotaryDialState extends State<RotaryDial> {
-  double _angle = 0.0; // Represents the needle's angle, from -PI/2 to PI/2
+  double _needlePosition = 0.0; // Position from 0.0 to 1.0
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onPanUpdate: (details) {
-        // Update angle based on horizontal drag, constrained to a 180-degree arc
-        final screenWidth = MediaQuery.of(context).size.width;
-        final angleChange = (details.delta.dx / screenWidth) * pi;
-        setState(() {
-          _angle = (_angle + angleChange).clamp(-pi / 2, pi / 2);
-        });
-      },
-      onPanEnd: (details) {
-        if (widget.stationCount > 0) {
-          // Normalize the angle from 0.0 to 1.0
-          final normalizedValue = (_angle + (pi / 2)) / pi;
-          // Map the normalized value to a station index
-          final stationIndex = (normalizedValue * (widget.stationCount - 1)).round();
-          widget.onStationSelected(stationIndex);
-        }
-      },
-      child: SizedBox(
-        width: 250,
-        height: 125,
-        child: Stack(
-          alignment: Alignment.bottomCenter,
-          children: [
-            // The half-moon background with frequency markings
-            Container(
-              width: 250,
-              height: 125,
-              decoration: BoxDecoration(
-                color: Colors.brown[800],
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(125),
-                  topRight: Radius.circular(125),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double dialWidth = constraints.maxWidth * 0.9;
+        final double dialHeight = 80;
+
+        return GestureDetector(
+          onPanUpdate: (details) {
+            final newPosition = _needlePosition + (details.delta.dx / dialWidth);
+            setState(() {
+              _needlePosition = newPosition.clamp(0.0, 1.0);
+            });
+          },
+          onPanEnd: (details) {
+            if (widget.stationCount > 0) {
+              final stationIndex = (_needlePosition * (widget.stationCount - 1)).round();
+              widget.onStationSelected(stationIndex);
+            }
+          },
+          child: SizedBox(
+            width: dialWidth,
+            height: dialHeight,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: dialWidth,
+                  height: dialHeight,
+                  decoration: BoxDecoration(
+                    color: Colors.brown[800],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.black, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.5),
+                        spreadRadius: 2,
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      )
+                    ],
+                  ),
+                  child: CustomPaint(
+                    painter: HorizontalDialPainter(),
+                  ),
                 ),
-                border: Border.all(color: Colors.brown[900]!, width: 4),
-              ),
-              child: CustomPaint(
-                painter: FrequencyPainter(),
-              ),
-            ),
-            // The tuning needle
-            Transform.rotate(
-              angle: _angle,
-              alignment: Alignment.bottomCenter,
-              child: Container(
-                width: 2,
-                height: 110,
-                decoration: BoxDecoration(
-                  color: Colors.red[700],
-                  borderRadius: BorderRadius.circular(2),
+                Positioned(
+                  left: _needlePosition * (dialWidth - 4) - 1,
+                  child: Container(
+                    width: 2,
+                    height: dialHeight - 8,
+                    color: Colors.red[700],
+                  ),
                 ),
-              ),
+              ],
             ),
-            // A decorative knob at the pivot point
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                color: Colors.grey[600],
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.black, width: 2),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
 
-// [NEW] Custom Painter for drawing the frequency markings on the dial
-class FrequencyPainter extends CustomPainter {
+class HorizontalDialPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height);
-    final radius = size.width / 2;
+    final width = size.width;
+    final height = size.height;
 
     final paint = Paint()
-      ..color = Colors.white.withOpacity(0.8)
+      ..color = Colors.white.withOpacity(0.7)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
 
-    final textStyle = TextStyle(
-      color: Colors.white.withOpacity(0.8),
-      fontSize: 10,
-    );
+    const majorTickCount = 11; // For 88, 90, ..., 108
+    for (int i = 0; i < majorTickCount; i++) {
+      final x = (width / (majorTickCount - 1)) * i;
 
-    // Draw 11 markings (for 88 to 108)
-    for (int i = 0; i <= 10; i++) {
-      // Calculate angle for each marking from -180 to 0 degrees
-      final angle = -pi + (pi * i / 10);
+      canvas.drawLine(Offset(x, height), Offset(x, height - 15), paint);
 
-      final isMajorMarking = i % 2 == 0;
-      final markingLength = isMajorMarking ? 20.0 : 10.0;
+      final text = (88 + i * 2).toString();
+      final textSpan = TextSpan(
+        text: text,
+        style: GoogleFonts.orbitron(color: Colors.white, fontSize: 10),
+      );
+      final textPainter = TextPainter(text: textSpan, textAlign: TextAlign.center, textDirection: TextDirection.ltr);
+      textPainter.layout();
+      textPainter.paint(canvas, Offset(x - (textPainter.width / 2), height - 30));
 
-      final innerX = center.dx + (radius - markingLength) * cos(angle);
-      final innerY = center.dy + (radius - markingLength) * sin(angle);
-      final outerX = center.dx + (radius - 4) * cos(angle);
-      final outerY = center.dy + (radius - 4) * sin(angle);
-
-      canvas.drawLine(Offset(innerX, innerY), Offset(outerX, outerY), paint);
-
-      // Draw text for major markings
-      if (isMajorMarking) {
-        final textSpan = TextSpan(
-          text: (88 + i * 2).toString(),
-          style: textStyle,
-        );
-        final textPainter = TextPainter(
-          text: textSpan,
-          textAlign: TextAlign.center,
-          textDirection: TextDirection.ltr,
-        );
-        textPainter.layout();
-
-        // Position text inside the markings
-        final textX = center.dx + (radius - 35) * cos(angle) - (textPainter.width / 2);
-        final textY = center.dy + (radius - 35) * sin(angle) - (textPainter.height / 2);
-        textPainter.paint(canvas, Offset(textX, textY));
+      if (i < majorTickCount - 1) {
+        final minorX = x + (width / (majorTickCount - 1) / 2);
+        canvas.drawLine(Offset(minorX, height), Offset(minorX, height - 10), paint);
       }
     }
+
+    final fmText = TextSpan(text: 'FM STEREO', style: GoogleFonts.orbitron(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold));
+    final fmTextPainter = TextPainter(text: fmText, textDirection: TextDirection.ltr);
+    fmTextPainter.layout();
+    fmTextPainter.paint(canvas, const Offset(15, 10));
+
+    final mhzText = TextSpan(text: 'MHz', style: GoogleFonts.orbitron(color: Colors.white70, fontSize: 12));
+    final mhzTextPainter = TextPainter(text: mhzText, textDirection: TextDirection.ltr);
+    mhzTextPainter.layout();
+    mhzTextPainter.paint(canvas, Offset(width - 45, 10));
   }
 
   @override
