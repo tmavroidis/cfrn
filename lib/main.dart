@@ -1,4 +1,5 @@
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -43,7 +44,8 @@ class _RadioPageState extends State<RadioPage> {
   bool _isResolvingServer = false;
   String? _apiBaseUrl;
 
-  bool _isPowerOn = false;
+  // [FIX] Power is now on by default
+  bool _isPowerOn = true;
   PlayerState? _playerState;
 
   @override
@@ -105,9 +107,20 @@ class _RadioPageState extends State<RadioPage> {
       final response = await http.get(Uri.parse('$_apiBaseUrl/json/countries'));
       if (response.statusCode == 200) {
         if (!mounted) return;
+        final List<dynamic> countries = json.decode(response.body);
         setState(() {
-          _countries = json.decode(response.body);
+          _countries = countries;
         });
+
+        // [NEW] Default to Canada
+        var canada = countries.firstWhere((c) => c['name'] == 'Canada', orElse: () => null);
+        if (canada != null) {
+          final canadaCode = canada['iso_3166_1'];
+          setState(() {
+            _selectedCountry = canadaCode;
+          });
+          await _getStations(canadaCode);
+        }
       } else {
         _showError('Failed to load countries');
       }
@@ -229,14 +242,13 @@ class _RadioPageState extends State<RadioPage> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 20),
-                      // [FIX] Added isExpanded to DropdownButton to fix horizontal overflow
                       DropdownButton<String>(
                         isExpanded: true,
                         hint: _isResolvingServer
                             ? const Text('Finding server...')
                             : _isLoadingCountries
-                            ? const Text('Loading countries...')
-                            : const Text('Select Country'),
+                                ? const Text('Loading countries...')
+                                : const Text('Select Country'),
                         value: _selectedCountry,
                         onChanged: (String? newValue) {
                           if (newValue != null) {
@@ -266,22 +278,22 @@ class _RadioPageState extends State<RadioPage> {
                   child: _isLoadingStations
                       ? const Center(child: CircularProgressIndicator())
                       : _stations.isEmpty
-                      ? Center(child: Text(_selectedCountry == null ? '' : 'No stations found.'))
-                      : ListView.builder(
-                    shrinkWrap: true,
-                    primary: false,
-                    itemCount: _stations.length,
-                    itemBuilder: (context, index) {
-                      final station = _stations[index];
-                      return ListTile(
-                        title: Text(station['name']),
-                        subtitle: Text(
-                            "${station['state'] ?? ''}, ${station['country'] ?? ''}"
-                                .trim()),
-                        onTap: () => _playStation(station['url_resolved'], station['name']),
-                      );
-                    },
-                  ),
+                          ? Center(child: Text(_selectedCountry == null ? '' : 'No stations found.'))
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              primary: false,
+                              itemCount: _stations.length,
+                              itemBuilder: (context, index) {
+                                final station = _stations[index];
+                                return ListTile(
+                                  title: Text(station['name']),
+                                  subtitle: Text(
+                                      "${station['state'] ?? ''}, ${station['country'] ?? ''}"
+                                          .trim()),
+                                  onTap: () => _playStation(station['url_resolved'], station['name']),
+                                );
+                              },
+                            ),
                 ),
               ),
             ],
