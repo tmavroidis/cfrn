@@ -44,7 +44,6 @@ class _RadioPageState extends State<RadioPage> {
   bool _isResolvingServer = false;
   String? _apiBaseUrl;
 
-  // [FIX] Power is now on by default
   bool _isPowerOn = true;
   PlayerState? _playerState;
 
@@ -112,7 +111,6 @@ class _RadioPageState extends State<RadioPage> {
           _countries = countries;
         });
 
-        // [NEW] Default to Canada
         var canada = countries.firstWhere((c) => c['name'] == 'Canada', orElse: () => null);
         if (canada != null) {
           final canadaCode = canada['iso_3166_1'];
@@ -247,8 +245,8 @@ class _RadioPageState extends State<RadioPage> {
                         hint: _isResolvingServer
                             ? const Text('Finding server...')
                             : _isLoadingCountries
-                                ? const Text('Loading countries...')
-                                : const Text('Select Country'),
+                            ? const Text('Loading countries...')
+                            : const Text('Select Country'),
                         value: _selectedCountry,
                         onChanged: (String? newValue) {
                           if (newValue != null) {
@@ -278,22 +276,25 @@ class _RadioPageState extends State<RadioPage> {
                   child: _isLoadingStations
                       ? const Center(child: CircularProgressIndicator())
                       : _stations.isEmpty
-                          ? Center(child: Text(_selectedCountry == null ? '' : 'No stations found.'))
-                          : ListView.builder(
-                              shrinkWrap: true,
-                              primary: false,
-                              itemCount: _stations.length,
-                              itemBuilder: (context, index) {
-                                final station = _stations[index];
-                                return ListTile(
-                                  title: Text(station['name']),
-                                  subtitle: Text(
-                                      "${station['state'] ?? ''}, ${station['country'] ?? ''}"
-                                          .trim()),
-                                  onTap: () => _playStation(station['url_resolved'], station['name']),
-                                );
-                              },
-                            ),
+                      ? Center(child: Text(_selectedCountry == null ? '' : 'No stations found.'))
+                      : ListView.builder(
+                    shrinkWrap: true,
+                    primary: false,
+                    itemCount: _stations.length,
+                    itemBuilder: (context, index) {
+                      final station = _stations[index];
+                      final isSelected = station['name'] == _currentlyPlayingStation;
+                      return ListTile(
+                        title: Text(station['name']),
+                        subtitle: Text(
+                            "${station['state'] ?? ''}, ${station['country'] ?? ''}"
+                                .trim()),
+                        onTap: () => _playStation(station['url_resolved'], station['name']),
+                        selected: isSelected,
+                        selectedTileColor: Colors.brown[400],
+                      );
+                    },
+                  ),
                 ),
               ),
             ],
@@ -325,8 +326,9 @@ class _RotaryDialState extends State<RotaryDial> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final double dialWidth = constraints.maxWidth * 0.9;
-        final double dialHeight = 80;
+        final double dialWidth = constraints.maxWidth;
+        const double aspectRatio = 16 / 9;
+        final double dialHeight = (dialWidth / aspectRatio) / 4;
 
         return GestureDetector(
           onPanUpdate: (details) {
@@ -348,30 +350,26 @@ class _RotaryDialState extends State<RotaryDial> {
               alignment: Alignment.center,
               children: [
                 Container(
-                  width: dialWidth,
-                  height: dialHeight,
                   decoration: BoxDecoration(
-                    color: Colors.brown[800],
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.black, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.5),
-                        spreadRadius: 2,
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      )
-                    ],
                   ),
-                  child: CustomPaint(
-                    painter: HorizontalDialPainter(),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8.0),
+                    child: Image.asset(
+                      'assets/Dial.jpg',
+                      width: dialWidth,
+                      height: dialHeight,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
                 Positioned(
                   left: _needlePosition * (dialWidth - 4) - 1,
+                  top: 4,
+                  bottom: 4,
                   child: Container(
                     width: 2,
-                    height: dialHeight - 8,
                     color: Colors.red[700],
                   ),
                 ),
@@ -381,54 +379,5 @@ class _RotaryDialState extends State<RotaryDial> {
         );
       },
     );
-  }
-}
-
-class HorizontalDialPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final width = size.width;
-    final height = size.height;
-
-    final paint = Paint()
-      ..color = Colors.white.withOpacity(0.7)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-
-    const majorTickCount = 11; // For 88, 90, ..., 108
-    for (int i = 0; i < majorTickCount; i++) {
-      final x = (width / (majorTickCount - 1)) * i;
-
-      canvas.drawLine(Offset(x, height), Offset(x, height - 15), paint);
-
-      final text = (88 + i * 2).toString();
-      final textSpan = TextSpan(
-        text: text,
-        style: GoogleFonts.orbitron(color: Colors.white, fontSize: 10),
-      );
-      final textPainter = TextPainter(text: textSpan, textAlign: TextAlign.center, textDirection: TextDirection.ltr);
-      textPainter.layout();
-      textPainter.paint(canvas, Offset(x - (textPainter.width / 2), height - 30));
-
-      if (i < majorTickCount - 1) {
-        final minorX = x + (width / (majorTickCount - 1) / 2);
-        canvas.drawLine(Offset(minorX, height), Offset(minorX, height - 10), paint);
-      }
-    }
-
-    final fmText = TextSpan(text: 'FM STEREO', style: GoogleFonts.orbitron(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold));
-    final fmTextPainter = TextPainter(text: fmText, textDirection: TextDirection.ltr);
-    fmTextPainter.layout();
-    fmTextPainter.paint(canvas, const Offset(15, 10));
-
-    final mhzText = TextSpan(text: 'MHz', style: GoogleFonts.orbitron(color: Colors.white70, fontSize: 12));
-    final mhzTextPainter = TextPainter(text: mhzText, textDirection: TextDirection.ltr);
-    mhzTextPainter.layout();
-    mhzTextPainter.paint(canvas, Offset(width - 45, 10));
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return false;
   }
 }
