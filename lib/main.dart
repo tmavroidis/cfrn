@@ -47,7 +47,6 @@ class _RadioPageState extends State<RadioPage> {
   bool _isPowerOn = true;
   PlayerState? _playerState;
 
-  // [FIX] Made types more explicit to prevent runtime errors
   List<Map<String, Object>> _subdivisions = [];
   String? _selectedSubdivision;
   List<dynamic> _filteredStations = [];
@@ -157,8 +156,17 @@ class _RadioPageState extends State<RadioPage> {
 
     if (!mounted) return;
 
+    // [FIX] Filter for online stations first, then derive subdivisions from the result.
+    final onlineStations = fetchedStations.where((station) {
+      final dynamic lastCheck = station['lastcheckok'];
+      if (lastCheck is bool) return lastCheck;
+      if (lastCheck is int) return lastCheck == 1;
+      if (lastCheck is String) return lastCheck == '1' || lastCheck.toLowerCase() == 'true';
+      return false;
+    }).toList();
+
     final Set<String> stateSet = {};
-    for (var station in fetchedStations) {
+    for (var station in onlineStations) {
       final state = station['state'];
       if (state != null && state.isNotEmpty) {
         stateSet.add(state);
@@ -167,20 +175,19 @@ class _RadioPageState extends State<RadioPage> {
     final List<String> subdivisionNames = stateSet.toList();
     subdivisionNames.sort();
 
-    // [FIX] Explicitly type the list and maps to be type-safe
     final List<Map<String, Object>> subdivisions = subdivisionNames.map((name) {
       return {
         'name': name,
-        'stationcount': fetchedStations.where((s) => s['state'] == name).length,
+        'stationcount': onlineStations.where((s) => s['state'] == name).length,
       };
     }).toList();
 
     if (subdivisions.length > 1) {
-      subdivisions.insert(0, {'name': 'All', 'stationcount': fetchedStations.length});
+      subdivisions.insert(0, {'name': 'All', 'stationcount': onlineStations.length});
     }
 
     setState(() {
-      _stations = fetchedStations;
+      _stations = onlineStations; // Master list now only contains online stations
       _filteredStations = List.from(_stations);
       _subdivisions = subdivisions;
       _isLoadingStations = false;
@@ -316,7 +323,6 @@ class _RadioPageState extends State<RadioPage> {
                                 }
                               });
                             },
-                            // [FIX] Safely create DropdownMenuItems with explicit casting
                             items: _subdivisions.map<DropdownMenuItem<String>>((Map<String, Object> subdivision) {
                               final String name = subdivision['name'] as String;
                               final int stationCount = subdivision['stationcount'] as int;
