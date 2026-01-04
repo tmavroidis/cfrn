@@ -47,6 +47,11 @@ class _RadioPageState extends State<RadioPage> {
   bool _isPowerOn = true;
   PlayerState? _playerState;
 
+  // [FIX] Made types more explicit to prevent runtime errors
+  List<Map<String, Object>> _subdivisions = [];
+  String? _selectedSubdivision;
+  List<dynamic> _filteredStations = [];
+
   @override
   void initState() {
     super.initState();
@@ -114,10 +119,7 @@ class _RadioPageState extends State<RadioPage> {
         var canada = countries.firstWhere((c) => c['name'] == 'Canada', orElse: () => null);
         if (canada != null) {
           final canadaCode = canada['iso_3166_1'];
-          setState(() {
-            _selectedCountry = canadaCode;
-          });
-          await _getStations(canadaCode);
+          await _handleCountryChange(canadaCode);
         }
       } else {
         _showError('Failed to load countries');
@@ -131,27 +133,56 @@ class _RadioPageState extends State<RadioPage> {
     });
   }
 
-  Future<void> _getStations(String countryCode) async {
-    if (_apiBaseUrl == null) return;
-    if (!mounted) return;
+  Future<void> _handleCountryChange(String countryCode) async {
     setState(() {
+      _selectedCountry = countryCode;
+      _stations = [];
+      _filteredStations = [];
+      _subdivisions = [];
+      _selectedSubdivision = null;
       _isLoadingStations = true;
     });
+
+    List<dynamic> fetchedStations = [];
     try {
       final response = await http.get(Uri.parse('$_apiBaseUrl/json/stations/bycountrycodeexact/$countryCode'));
       if (response.statusCode == 200) {
-        if (!mounted) return;
-        setState(() {
-          _stations = json.decode(response.body);
-        });
+        fetchedStations = json.decode(response.body);
       } else {
         _showError('Failed to load stations');
       }
     } catch (e) {
-      _showError('Error: $e');
+      _showError('Error getting stations: $e');
     }
+
     if (!mounted) return;
+
+    final Set<String> stateSet = {};
+    for (var station in fetchedStations) {
+      final state = station['state'];
+      if (state != null && state.isNotEmpty) {
+        stateSet.add(state);
+      }
+    }
+    final List<String> subdivisionNames = stateSet.toList();
+    subdivisionNames.sort();
+
+    // [FIX] Explicitly type the list and maps to be type-safe
+    final List<Map<String, Object>> subdivisions = subdivisionNames.map((name) {
+      return {
+        'name': name,
+        'stationcount': fetchedStations.where((s) => s['state'] == name).length,
+      };
+    }).toList();
+
+    if (subdivisions.length > 1) {
+      subdivisions.insert(0, {'name': 'All', 'stationcount': fetchedStations.length});
+    }
+
     setState(() {
+      _stations = fetchedStations;
+      _filteredStations = List.from(_stations);
+      _subdivisions = subdivisions;
       _isLoadingStations = false;
     });
   }
@@ -185,8 +216,8 @@ class _RadioPageState extends State<RadioPage> {
   }
 
   void _onStationTuned(int index) {
-    if (_stations.isNotEmpty && index < _stations.length) {
-      final station = _stations[index];
+    if (_filteredStations.isNotEmpty && index < _filteredStations.length) {
+      final station = _filteredStations[index];
       _playStation(station['url_resolved'], station['name']);
     }
   }
@@ -229,7 +260,7 @@ class _RadioPageState extends State<RadioPage> {
                     children: [
                       const SizedBox(height: 20),
                       RotaryDial(
-                        stationCount: _stations.length,
+                        stationCount: _filteredStations.length,
                         onStationSelected: _onStationTuned,
                       ),
                       const SizedBox(height: 20),
@@ -239,6 +270,12 @@ class _RadioPageState extends State<RadioPage> {
                         textAlign: TextAlign.center,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      const SizedBox(height: 4),
+                      if (_isPowerOn)
+                        Text(
+                          'State: ${_playerState?.toString().split('.').last ?? 'unknown'}',
+                          style: GoogleFonts.orbitron(fontSize: 10, color: Colors.black54),
+                        ),
                       const SizedBox(height: 20),
                       DropdownButton<String>(
                         isExpanded: true,
@@ -249,12 +286,8 @@ class _RadioPageState extends State<RadioPage> {
                             : const Text('Select Country'),
                         value: _selectedCountry,
                         onChanged: (String? newValue) {
-                          if (newValue != null) {
-                            setState(() {
-                              _selectedCountry = newValue;
-                              _stations = [];
-                              _getStations(newValue);
-                            });
+                          if (newValue != null && newValue != _selectedCountry) {
+                            _handleCountryChange(newValue);
                           }
                         },
                         items: _countries.map<DropdownMenuItem<String>>((dynamic value) {
@@ -264,6 +297,39 @@ class _RadioPageState extends State<RadioPage> {
                           );
                         }).toList(),
                       ),
+                      if (_subdivisions.length > 1)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10.0),
+                          child: DropdownButton<String>(
+                            isExpanded: true,
+                            value: _selectedSubdivision,
+                            hint: const Text('Filter by Subdivision'),
+                            onChanged: (String? newValue) {
+                              setState(() {
+                                _selectedSubdivision = newValue;
+                                if (newValue == 'All' || newValue == null) {
+                                  _filteredStations = List.from(_stations);
+                                } else {
+                                  _filteredStations = _stations
+                                      .where((s) => s['state'] == newValue)
+                                      .toList();
+                                }
+                              });
+                            },
+                            // [FIX] Safely create DropdownMenuItems with explicit casting
+                            items: _subdivisions.map<DropdownMenuItem<String>>((Map<String, Object> subdivision) {
+                              final String name = subdivision['name'] as String;
+                              final int stationCount = subdivision['stationcount'] as int;
+                              return DropdownMenuItem<String>(
+                                value: name,
+                                child: Text(
+                                  '$name ($stationCount)',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -275,14 +341,14 @@ class _RadioPageState extends State<RadioPage> {
                   absorbing: !_isPowerOn,
                   child: _isLoadingStations
                       ? const Center(child: CircularProgressIndicator())
-                      : _stations.isEmpty
+                      : _filteredStations.isEmpty
                       ? Center(child: Text(_selectedCountry == null ? '' : 'No stations found.'))
                       : ListView.builder(
                     shrinkWrap: true,
                     primary: false,
-                    itemCount: _stations.length,
+                    itemCount: _filteredStations.length,
                     itemBuilder: (context, index) {
-                      final station = _stations[index];
+                      final station = _filteredStations[index];
                       final isSelected = station['name'] == _currentlyPlayingStation;
                       return ListTile(
                         title: Text(station['name']),
@@ -327,8 +393,7 @@ class _RotaryDialState extends State<RotaryDial> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double dialWidth = constraints.maxWidth;
-        const double aspectRatio = 16 / 9;
-        final double dialHeight = (dialWidth / aspectRatio) / 4;
+        final double dialHeight = dialWidth / (16 / 4.5);
 
         return GestureDetector(
           onPanUpdate: (details) {
