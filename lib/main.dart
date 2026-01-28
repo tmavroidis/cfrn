@@ -1,12 +1,33 @@
 import 'dart:math';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:window_manager/window_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    await windowManager.ensureInitialized();
+    WindowOptions windowOptions = const WindowOptions(
+      size: Size(400, 800),
+      center: true,
+      backgroundColor: Colors.transparent,
+      skipTaskbar: false,
+      titleBarStyle: TitleBarStyle.normal,
+    );
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.show();
+      await windowManager.focus();
+      await windowManager.setResizable(false);
+    });
+  }
+
   runApp(const MyApp());
 }
 
@@ -35,7 +56,8 @@ class RadioPage extends StatefulWidget {
 
 class _RadioPageState extends State<RadioPage> {
   List<dynamic> _countries = [];
-  String? _selectedCountry;
+  String? _selectedCountryCode;
+  String? _selectedCountryName; // [NEW] Track country name for image search
   List<dynamic> _stations = [];
   final AudioPlayer _audioPlayer = AudioPlayer();
   String? _currentlyPlayingStation;
@@ -51,9 +73,13 @@ class _RadioPageState extends State<RadioPage> {
   String? _selectedSubdivision;
   List<dynamic> _filteredStations = [];
 
+  List<dynamic> _favouriteStations = [];
+  SharedPreferences? _prefs;
+
   @override
   void initState() {
     super.initState();
+    _initPrefs();
     _audioPlayer.onPlayerStateChanged.listen((PlayerState s) {
       if (!mounted) return;
       setState(() {
@@ -61,6 +87,68 @@ class _RadioPageState extends State<RadioPage> {
       });
     });
     _resolveApiServer();
+  }
+
+  Future<void> _initPrefs() async {
+    _prefs = await SharedPreferences.getInstance();
+    _loadFavourites();
+  }
+
+  void _loadFavourites() {
+    final String? favsJson = _prefs?.getString('favourite_stations');
+    if (favsJson != null) {
+      setState(() {
+        _favouriteStations = json.decode(favsJson);
+      });
+    }
+  }
+
+  Future<void> _saveFavourites() async {
+    await _prefs?.setString('favourite_stations', json.encode(_favouriteStations));
+  }
+
+  void _toggleFavourite(dynamic station) {
+    setState(() {
+      final index = _favouriteStations.indexWhere((s) => s['stationuuid'] == station['stationuuid']);
+      if (index >= 0) {
+        _favouriteStations.removeAt(index);
+      } else {
+        _favouriteStations.add(Map<String, dynamic>.from(station));
+      }
+    });
+    _saveFavourites();
+  }
+
+  void _renamePreset(int index) {
+    final TextEditingController controller = TextEditingController(text: _favouriteStations[index]['name']);
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Rename Preset'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(hintText: "Enter new name"),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _favouriteStations[index]['name'] = controller.text;
+                });
+                _saveFavourites();
+                Navigator.pop(context);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -117,8 +205,7 @@ class _RadioPageState extends State<RadioPage> {
 
         var canada = countries.firstWhere((c) => c['name'] == 'Canada', orElse: () => null);
         if (canada != null) {
-          final canadaCode = canada['iso_3166_1'];
-          await _handleCountryChange(canadaCode);
+          await _handleCountryChange(canada['iso_3166_1'], canada['name']);
         }
       } else {
         _showError('Failed to load countries');
@@ -132,9 +219,10 @@ class _RadioPageState extends State<RadioPage> {
     });
   }
 
-  Future<void> _handleCountryChange(String countryCode) async {
+  Future<void> _handleCountryChange(String countryCode, String countryName) async {
     setState(() {
-      _selectedCountry = countryCode;
+      _selectedCountryCode = countryCode;
+      _selectedCountryName = countryName; // Store name for image tool
       _stations = [];
       _filteredStations = [];
       _subdivisions = [];
@@ -156,7 +244,6 @@ class _RadioPageState extends State<RadioPage> {
 
     if (!mounted) return;
 
-    // [FIX] Filter for online stations first, then derive subdivisions from the result.
     final onlineStations = fetchedStations.where((station) {
       final dynamic lastCheck = station['lastcheckok'];
       if (lastCheck is bool) return lastCheck;
@@ -187,7 +274,7 @@ class _RadioPageState extends State<RadioPage> {
     }
 
     setState(() {
-      _stations = onlineStations; // Master list now only contains online stations
+      _stations = onlineStations;
       _filteredStations = List.from(_stations);
       _subdivisions = subdivisions;
       _isLoadingStations = false;
@@ -269,6 +356,9 @@ class _RadioPageState extends State<RadioPage> {
                       RotaryDial(
                         stationCount: _filteredStations.length,
                         onStationSelected: _onStationTuned,
+                        searchTerm: _selectedSubdivision != null && _selectedSubdivision != 'All' 
+                            ? '$_selectedSubdivision, $_selectedCountryName'
+                            : _selectedCountryName,
                       ),
                       const SizedBox(height: 20),
                       Text(
@@ -284,6 +374,39 @@ class _RadioPageState extends State<RadioPage> {
                           style: GoogleFonts.orbitron(fontSize: 10, color: Colors.black54),
                         ),
                       const SizedBox(height: 20),
+                      if (_favouriteStations.isNotEmpty)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Presets:', style: TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              children: _favouriteStations.asMap().entries.map((entry) {
+                                final int index = entry.key;
+                                final dynamic station = entry.value;
+                                final isPlaying = station['name'] == _currentlyPlayingStation;
+                                
+                                return GestureDetector(
+                                  onLongPress: () => _renamePreset(index),
+                                  child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: isPlaying ? Colors.brown : Colors.brown[300],
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    onPressed: () => _playStation(station['url_resolved'], station['name']),
+                                    child: Text(
+                                      station['name'],
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                            const SizedBox(height: 20),
+                          ],
+                        ),
                       DropdownButton<String>(
                         isExpanded: true,
                         hint: _isResolvingServer
@@ -291,10 +414,11 @@ class _RadioPageState extends State<RadioPage> {
                             : _isLoadingCountries
                             ? const Text('Loading countries...')
                             : const Text('Select Country'),
-                        value: _selectedCountry,
+                        value: _selectedCountryCode,
                         onChanged: (String? newValue) {
-                          if (newValue != null && newValue != _selectedCountry) {
-                            _handleCountryChange(newValue);
+                          if (newValue != null && newValue != _selectedCountryCode) {
+                            final country = _countries.firstWhere((c) => c['iso_3166_1'] == newValue);
+                            _handleCountryChange(newValue, country['name']);
                           }
                         },
                         items: _countries.map<DropdownMenuItem<String>>((dynamic value) {
@@ -348,7 +472,7 @@ class _RadioPageState extends State<RadioPage> {
                   child: _isLoadingStations
                       ? const Center(child: CircularProgressIndicator())
                       : _filteredStations.isEmpty
-                      ? Center(child: Text(_selectedCountry == null ? '' : 'No stations found.'))
+                      ? Center(child: Text(_selectedCountryCode == null ? '' : 'No stations found.'))
                       : ListView.builder(
                     shrinkWrap: true,
                     primary: false,
@@ -356,14 +480,43 @@ class _RadioPageState extends State<RadioPage> {
                     itemBuilder: (context, index) {
                       final station = _filteredStations[index];
                       final isSelected = station['name'] == _currentlyPlayingStation;
-                      return ListTile(
-                        title: Text(station['name']),
-                        subtitle: Text(
-                            "${station['state'] ?? ''}, ${station['country'] ?? ''}"
-                                .trim()),
-                        onTap: () => _playStation(station['url_resolved'], station['name']),
-                        selected: isSelected,
-                        selectedTileColor: Colors.brown[400],
+                      final isFavourite = _favouriteStations.any((s) => s['stationuuid'] == station['stationuuid']);
+                      
+                      return Card(
+                        color: isSelected ? Colors.brown[200] : Colors.white,
+                        child: ListTile(
+                          title: Text(station['name']),
+                          subtitle: Text(
+                              "${station['state'] ?? ''}, ${station['country'] ?? ''}"
+                                  .trim()),
+                          onTap: () => _playStation(station['url_resolved'], station['name']),
+                          selected: isSelected,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: Icon(
+                                  isSelected ? Icons.stop_circle : Icons.play_circle,
+                                  color: Colors.brown,
+                                ),
+                                onPressed: () {
+                                  if (isSelected) {
+                                    _stopStation();
+                                  } else {
+                                    _playStation(station['url_resolved'], station['name']);
+                                  }
+                                },
+                              ),
+                              IconButton(
+                                icon: Icon(
+                                  isFavourite ? Icons.favorite : Icons.favorite_border,
+                                  color: isFavourite ? Colors.red : Colors.grey,
+                                ),
+                                onPressed: () => _toggleFavourite(station),
+                              ),
+                            ],
+                          ),
+                        ),
                       );
                     },
                   ),
@@ -380,11 +533,13 @@ class _RadioPageState extends State<RadioPage> {
 class RotaryDial extends StatefulWidget {
   final Function(int) onStationSelected;
   final int stationCount;
+  final String? searchTerm; // [NEW] Use this to fetch relevant image
 
   const RotaryDial({
     super.key,
     required this.onStationSelected,
     required this.stationCount,
+    this.searchTerm,
   });
 
   @override
@@ -400,6 +555,11 @@ class _RotaryDialState extends State<RotaryDial> {
       builder: (context, constraints) {
         final double dialWidth = constraints.maxWidth;
         final double dialHeight = dialWidth / (16 / 4.5);
+
+        // [NEW] Construct image URL based on selected country/subdivision
+        final String imageUrl = widget.searchTerm != null 
+            ? 'https://loremflickr.com/400/100/${Uri.encodeComponent(widget.searchTerm!)},landscape'
+            : '';
 
         return GestureDetector(
           onPanUpdate: (details) {
@@ -427,12 +587,40 @@ class _RotaryDialState extends State<RotaryDial> {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8.0),
-                    child: Image.asset(
-                      'assets/Dial.jpg',
-                      width: dialWidth,
-                      height: dialHeight,
-                      fit: BoxFit.cover,
-                    ),
+                    child: widget.searchTerm != null && widget.searchTerm!.isNotEmpty
+                        ? Image.network(
+                            imageUrl,
+                            key: ValueKey(imageUrl), // Force reload when search term changes
+                            width: dialWidth,
+                            height: dialHeight,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => Image.asset(
+                              'assets/Dial.jpg',
+                              width: dialWidth,
+                              height: dialHeight,
+                              fit: BoxFit.cover,
+                            ),
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Stack(
+                                children: [
+                                  Image.asset(
+                                    'assets/Dial.jpg',
+                                    width: dialWidth,
+                                    height: dialHeight,
+                                    fit: BoxFit.cover,
+                                  ),
+                                  const Center(child: CircularProgressIndicator(color: Colors.white)),
+                                ],
+                              );
+                            },
+                          )
+                        : Image.asset(
+                            'assets/Dial.jpg',
+                            width: dialWidth,
+                            height: dialHeight,
+                            fit: BoxFit.cover,
+                          ),
                   ),
                 ),
                 Positioned(
