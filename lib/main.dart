@@ -57,7 +57,7 @@ class RadioPage extends StatefulWidget {
 class _RadioPageState extends State<RadioPage> {
   List<dynamic> _countries = [];
   String? _selectedCountryCode;
-  String? _selectedCountryName; // [NEW] Track country name for image search
+  String? _selectedCountryName;
   List<dynamic> _stations = [];
   final AudioPlayer _audioPlayer = AudioPlayer();
   String? _currentlyPlayingStation;
@@ -75,6 +75,8 @@ class _RadioPageState extends State<RadioPage> {
 
   List<dynamic> _favouriteStations = [];
   SharedPreferences? _prefs;
+
+  bool _showStationSelector = false;
 
   @override
   void initState() {
@@ -222,7 +224,7 @@ class _RadioPageState extends State<RadioPage> {
   Future<void> _handleCountryChange(String countryCode, String countryName) async {
     setState(() {
       _selectedCountryCode = countryCode;
-      _selectedCountryName = countryName; // Store name for image tool
+      _selectedCountryName = countryName;
       _stations = [];
       _filteredStations = [];
       _subdivisions = [];
@@ -407,118 +409,127 @@ class _RadioPageState extends State<RadioPage> {
                             const SizedBox(height: 20),
                           ],
                         ),
-                      DropdownButton<String>(
-                        isExpanded: true,
-                        hint: _isResolvingServer
-                            ? const Text('Finding server...')
-                            : _isLoadingCountries
-                            ? const Text('Loading countries...')
-                            : const Text('Select Country'),
-                        value: _selectedCountryCode,
-                        onChanged: (String? newValue) {
-                          if (newValue != null && newValue != _selectedCountryCode) {
-                            final country = _countries.firstWhere((c) => c['iso_3166_1'] == newValue);
-                            _handleCountryChange(newValue, country['name']);
-                          }
+                      ElevatedButton.icon(
+                        icon: Icon(_showStationSelector ? Icons.expand_less : Icons.expand_more),
+                        label: const Text('Select Stations'),
+                        onPressed: () {
+                          setState(() {
+                            _showStationSelector = !_showStationSelector;
+                          });
                         },
-                        items: _countries.map<DropdownMenuItem<String>>((dynamic value) {
-                          return DropdownMenuItem<String>(
-                            value: value['iso_3166_1'],
-                            child: Text(value['name'], overflow: TextOverflow.ellipsis),
-                          );
-                        }).toList(),
                       ),
-                      if (_subdivisions.length > 1)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10.0),
-                          child: DropdownButton<String>(
-                            isExpanded: true,
-                            value: _selectedSubdivision,
-                            hint: const Text('Filter by Subdivision'),
-                            onChanged: (String? newValue) {
-                              setState(() {
-                                _selectedSubdivision = newValue;
-                                if (newValue == 'All' || newValue == null) {
-                                  _filteredStations = List.from(_stations);
-                                } else {
-                                  _filteredStations = _stations
-                                      .where((s) => s['state'] == newValue)
-                                      .toList();
+                      const SizedBox(height: 20),
+                      if (_showStationSelector)
+                        Column(
+                          children: [
+                            DropdownButton<String>(
+                              isExpanded: true,
+                              hint: _isResolvingServer
+                                  ? const Text('Finding server...')
+                                  : _isLoadingCountries
+                                  ? const Text('Loading countries...')
+                                  : const Text('Select Country'),
+                              value: _selectedCountryCode,
+                              onChanged: (String? newValue) {
+                                if (newValue != null && newValue != _selectedCountryCode) {
+                                  final country = _countries.firstWhere((c) => c['iso_3166_1'] == newValue);
+                                  _handleCountryChange(newValue, country['name']);
                                 }
-                              });
-                            },
-                            items: _subdivisions.map<DropdownMenuItem<String>>((Map<String, Object> subdivision) {
-                              final String name = subdivision['name'] as String;
-                              final int stationCount = subdivision['stationcount'] as int;
-                              return DropdownMenuItem<String>(
-                                value: name,
-                                child: Text(
-                                  '$name ($stationCount)',
-                                  overflow: TextOverflow.ellipsis,
+                              },
+                              items: _countries.map<DropdownMenuItem<String>>((dynamic value) {
+                                return DropdownMenuItem<String>(
+                                  value: value['iso_3166_1'],
+                                  child: Text(value['name'], overflow: TextOverflow.ellipsis),
+                                );
+                              }).toList(),
+                            ),
+                            if (_subdivisions.length > 1)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 10.0),
+                                child: DropdownButton<String>(
+                                  isExpanded: true,
+                                  value: _selectedSubdivision,
+                                  hint: const Text('Filter by Subdivision'),
+                                  onChanged: (String? newValue) {
+                                    setState(() {
+                                      _selectedSubdivision = newValue;
+                                      if (newValue == 'All' || newValue == null) {
+                                        _filteredStations = List.from(_stations);
+                                      } else {
+                                        _filteredStations = _stations
+                                            .where((s) => s['state'] == newValue)
+                                            .toList();
+                                      }
+                                    });
+                                  },
+                                  items: _subdivisions.map<DropdownMenuItem<String>>((Map<String, Object> subdivision) {
+                                    final String name = subdivision['name'] as String;
+                                    final int stationCount = subdivision['stationcount'] as int;
+                                    return DropdownMenuItem<String>(
+                                      value: name,
+                                      child: Text(
+                                        '$name ($stationCount)',
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    );
+                                  }).toList(),
                                 ),
-                              );
-                            }).toList(),
-                          ),
+                              ),
+                            const SizedBox(height: 20),
+                            _isLoadingStations
+                                ? const CircularProgressIndicator()
+                                : _filteredStations.isEmpty
+                                ? Center(child: Text(_selectedCountryCode == null ? '' : 'No stations found.'))
+                                : ListView.builder(
+                              shrinkWrap: true,
+                              primary: false,
+                              itemCount: _filteredStations.length,
+                              itemBuilder: (context, index) {
+                                final station = _filteredStations[index];
+                                final isSelected = station['name'] == _currentlyPlayingStation;
+                                final isFavourite = _favouriteStations.any((s) => s['stationuuid'] == station['stationuuid']);
+                                
+                                return Card(
+                                  color: isSelected ? Colors.brown[200] : Colors.white,
+                                  child: ListTile(
+                                    title: Text(station['name']),
+                                    subtitle: Text(
+                                        "${station['state'] ?? ''}, ${station['country'] ?? ''}"
+                                            .trim()),
+                                    onTap: () => _playStation(station['url_resolved'], station['name']),
+                                    selected: isSelected,
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: Icon(
+                                            isSelected ? Icons.stop_circle : Icons.play_circle,
+                                            color: Colors.brown,
+                                          ),
+                                          onPressed: () {
+                                            if (isSelected) {
+                                              _stopStation();
+                                            } else {
+                                              _playStation(station['url_resolved'], station['name']);
+                                            }
+                                          },
+                                        ),
+                                        IconButton(
+                                          icon: Icon(
+                                            isFavourite ? Icons.favorite : Icons.favorite_border,
+                                            color: isFavourite ? Colors.red : Colors.grey,
+                                          ),
+                                          onPressed: () => _toggleFavourite(station),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
                     ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Opacity(
-                opacity: _isPowerOn ? 1.0 : 0.4,
-                child: AbsorbPointer(
-                  absorbing: !_isPowerOn,
-                  child: _isLoadingStations
-                      ? const Center(child: CircularProgressIndicator())
-                      : _filteredStations.isEmpty
-                      ? Center(child: Text(_selectedCountryCode == null ? '' : 'No stations found.'))
-                      : ListView.builder(
-                    shrinkWrap: true,
-                    primary: false,
-                    itemCount: _filteredStations.length,
-                    itemBuilder: (context, index) {
-                      final station = _filteredStations[index];
-                      final isSelected = station['name'] == _currentlyPlayingStation;
-                      final isFavourite = _favouriteStations.any((s) => s['stationuuid'] == station['stationuuid']);
-                      
-                      return Card(
-                        color: isSelected ? Colors.brown[200] : Colors.white,
-                        child: ListTile(
-                          title: Text(station['name']),
-                          subtitle: Text(
-                              "${station['state'] ?? ''}, ${station['country'] ?? ''}"
-                                  .trim()),
-                          onTap: () => _playStation(station['url_resolved'], station['name']),
-                          selected: isSelected,
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: Icon(
-                                  isSelected ? Icons.stop_circle : Icons.play_circle,
-                                  color: Colors.brown,
-                                ),
-                                onPressed: () {
-                                  if (isSelected) {
-                                    _stopStation();
-                                  } else {
-                                    _playStation(station['url_resolved'], station['name']);
-                                  }
-                                },
-                              ),
-                              IconButton(
-                                icon: Icon(
-                                  isFavourite ? Icons.favorite : Icons.favorite_border,
-                                  color: isFavourite ? Colors.red : Colors.grey,
-                                ),
-                                onPressed: () => _toggleFavourite(station),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
                   ),
                 ),
               ),
@@ -533,7 +544,7 @@ class _RadioPageState extends State<RadioPage> {
 class RotaryDial extends StatefulWidget {
   final Function(int) onStationSelected;
   final int stationCount;
-  final String? searchTerm; // [NEW] Use this to fetch relevant image
+  final String? searchTerm;
 
   const RotaryDial({
     super.key,
@@ -547,7 +558,7 @@ class RotaryDial extends StatefulWidget {
 }
 
 class _RotaryDialState extends State<RotaryDial> {
-  double _needlePosition = 0.0; // Position from 0.0 to 1.0
+  double _needlePosition = 0.0;
 
   @override
   Widget build(BuildContext context) {
@@ -556,10 +567,11 @@ class _RotaryDialState extends State<RotaryDial> {
         final double dialWidth = constraints.maxWidth;
         final double dialHeight = dialWidth / (16 / 4.5);
 
-        // [NEW] Construct image URL based on selected country/subdivision
-        final String imageUrl = widget.searchTerm != null 
-            ? 'https://loremflickr.com/400/100/${Uri.encodeComponent(widget.searchTerm!)},landscape'
-            : '';
+        // [FIX] Added a random lock parameter to force image changes and allow fallback to completely random landscape
+        final int randomId = Random().nextInt(10000);
+        final String imageUrl = widget.searchTerm != null && widget.searchTerm!.isNotEmpty
+            ? 'https://loremflickr.com/400/100/${Uri.encodeComponent(widget.searchTerm!)},landscape?lock=$randomId'
+            : 'https://loremflickr.com/400/100/landscape?lock=$randomId';
 
         return GestureDetector(
           onPanUpdate: (details) {
@@ -580,47 +592,42 @@ class _RotaryDialState extends State<RotaryDial> {
             child: Stack(
               alignment: Alignment.center,
               children: [
+                // Base static background
                 Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.black, width: 2),
+                    color: Colors.brown[800],
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8.0),
-                    child: widget.searchTerm != null && widget.searchTerm!.isNotEmpty
-                        ? Image.network(
-                            imageUrl,
-                            key: ValueKey(imageUrl), // Force reload when search term changes
-                            width: dialWidth,
-                            height: dialHeight,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) => Image.asset(
-                              'assets/Dial.jpg',
-                              width: dialWidth,
-                              height: dialHeight,
-                              fit: BoxFit.cover,
-                            ),
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
-                              return Stack(
-                                children: [
-                                  Image.asset(
-                                    'assets/Dial.jpg',
-                                    width: dialWidth,
-                                    height: dialHeight,
-                                    fit: BoxFit.cover,
-                                  ),
-                                  const Center(child: CircularProgressIndicator(color: Colors.white)),
-                                ],
-                              );
-                            },
-                          )
-                        : Image.asset(
-                            'assets/Dial.jpg',
-                            width: dialWidth,
-                            height: dialHeight,
-                            fit: BoxFit.cover,
-                          ),
+                    child: Image.asset(
+                      'assets/Dial.jpg',
+                      width: dialWidth,
+                      height: dialHeight,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                // Network image layer
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8.0),
+                    child: Image.network(
+                      imageUrl,
+                      key: ValueKey(imageUrl), 
+                      width: dialWidth,
+                      height: dialHeight,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(), // transparent if error, showing Dial.jpg below
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2));
+                      },
+                    ),
                   ),
                 ),
                 Positioned(
