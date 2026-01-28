@@ -121,6 +121,35 @@ class _RadioPageState extends State<RadioPage> {
     _saveFavourites();
   }
 
+  // [NEW] Show preset options menu (Rename/Remove)
+  void _showPresetOptions(int index) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit),
+              title: const Text('Rename'),
+              onTap: () {
+                Navigator.pop(context);
+                _renamePreset(index);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.red),
+              title: const Text('Remove from Favourites', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(context);
+                _confirmRemovePreset(index);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _renamePreset(int index) {
     final TextEditingController controller = TextEditingController(text: _favouriteStations[index]['name']);
     showDialog(
@@ -146,6 +175,34 @@ class _RadioPageState extends State<RadioPage> {
                 Navigator.pop(context);
               },
               child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _confirmRemovePreset(int index) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Remove Favourite'),
+          content: Text('Are you sure you want to remove "${_favouriteStations[index]['name']}" from your favourites?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _favouriteStations.removeAt(index);
+                });
+                _saveFavourites();
+                Navigator.pop(context);
+              },
+              child: const Text('Remove', style: TextStyle(color: Colors.red)),
             ),
           ],
         );
@@ -390,7 +447,9 @@ class _RadioPageState extends State<RadioPage> {
                                 final isPlaying = station['name'] == _currentlyPlayingStation;
                                 
                                 return GestureDetector(
-                                  onLongPress: () => _renamePreset(index),
+                                  // [FIX] Updated long-press to show options menu
+                                  onLongPress: () => _showPresetOptions(index),
+                                  onSecondaryTap: () => _confirmRemovePreset(index),
                                   child: ElevatedButton(
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: isPlaying ? Colors.brown : Colors.brown[300],
@@ -567,7 +626,6 @@ class _RotaryDialState extends State<RotaryDial> {
         final double dialWidth = constraints.maxWidth;
         final double dialHeight = dialWidth / (16 / 4.5);
 
-        // [FIX] Added a random lock parameter to force image changes and allow fallback to completely random landscape
         final int randomId = Random().nextInt(10000);
         final String imageUrl = widget.searchTerm != null && widget.searchTerm!.isNotEmpty
             ? 'https://loremflickr.com/400/100/${Uri.encodeComponent(widget.searchTerm!)},landscape?lock=$randomId'
@@ -592,7 +650,6 @@ class _RotaryDialState extends State<RotaryDial> {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Base static background
                 Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
@@ -609,7 +666,6 @@ class _RotaryDialState extends State<RotaryDial> {
                     ),
                   ),
                 ),
-                // Network image layer
                 Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
@@ -622,7 +678,7 @@ class _RotaryDialState extends State<RotaryDial> {
                       width: dialWidth,
                       height: dialHeight,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(), // transparent if error, showing Dial.jpg below
+                      errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(), 
                       loadingBuilder: (context, child, loadingProgress) {
                         if (loadingProgress == null) return child;
                         return const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2));
