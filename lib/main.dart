@@ -8,6 +8,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:reorderables/reorderables.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -77,6 +78,8 @@ class _RadioPageState extends State<RadioPage> {
   SharedPreferences? _prefs;
 
   bool _showStationSelector = false;
+  // [NEW] Track reorder mode
+  bool _isReorderMode = false;
 
   @override
   void initState() {
@@ -121,7 +124,14 @@ class _RadioPageState extends State<RadioPage> {
     _saveFavourites();
   }
 
-  // [NEW] Show preset options menu (Rename/Remove)
+  void _onReorder(int oldIndex, int newIndex) {
+    setState(() {
+      final item = _favouriteStations.removeAt(oldIndex);
+      _favouriteStations.insert(newIndex, item);
+    });
+    _saveFavourites();
+  }
+
   void _showPresetOptions(int index) {
     showModalBottomSheet(
       context: context,
@@ -134,6 +144,17 @@ class _RadioPageState extends State<RadioPage> {
               onTap: () {
                 Navigator.pop(context);
                 _renamePreset(index);
+              },
+            ),
+            // [NEW] Option to enable reordering
+            ListTile(
+              leading: const Icon(Icons.reorder),
+              title: const Text('Reorder Presets'),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() {
+                  _isReorderMode = true;
+                });
               },
             ),
             ListTile(
@@ -437,29 +458,52 @@ class _RadioPageState extends State<RadioPage> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Presets:', style: TextStyle(fontWeight: FontWeight.bold)),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('Presets:', style: TextStyle(fontWeight: FontWeight.bold)),
+                                if (_isReorderMode)
+                                  TextButton.icon(
+                                    icon: const Icon(Icons.check),
+                                    label: const Text('Done'),
+                                    onPressed: () => setState(() => _isReorderMode = false),
+                                  ),
+                              ],
+                            ),
                             const SizedBox(height: 8),
-                            Wrap(
+                            ReorderableWrap(
                               spacing: 8,
+                              runSpacing: 8,
+                              onReorder: _onReorder,
+                              // [FIX] Use state to control reordering and prevent conflicts
+                              enableReorder: _isReorderMode, 
                               children: _favouriteStations.asMap().entries.map((entry) {
                                 final int index = entry.key;
                                 final dynamic station = entry.value;
                                 final isPlaying = station['name'] == _currentlyPlayingStation;
                                 
                                 return GestureDetector(
-                                  // [FIX] Updated long-press to show options menu
-                                  onLongPress: () => _showPresetOptions(index),
-                                  onSecondaryTap: () => _confirmRemovePreset(index),
+                                  key: ValueKey(station['stationuuid']),
+                                  onLongPress: _isReorderMode ? null : () => _showPresetOptions(index),
+                                  onSecondaryTap: _isReorderMode ? null : () => _confirmRemovePreset(index),
                                   child: ElevatedButton(
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: isPlaying ? Colors.brown : Colors.brown[300],
                                       foregroundColor: Colors.white,
+                                      side: _isReorderMode ? const BorderSide(color: Colors.white, width: 2) : null,
                                     ),
-                                    onPressed: () => _playStation(station['url_resolved'], station['name']),
-                                    child: Text(
-                                      station['name'],
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                    onPressed: _isReorderMode ? null : () => _playStation(station['url_resolved'], station['name']),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (_isReorderMode) const Icon(Icons.drag_handle, size: 16),
+                                        if (_isReorderMode) const SizedBox(width: 4),
+                                        Text(
+                                          station['name'],
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 );
