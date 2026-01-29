@@ -372,7 +372,8 @@ class _RadioPageState extends State<RadioPage> {
     );
   }
 
-  void _playStation(String url, String name, {double? needlePos}) {
+  // [FIX] playStation now formats name to include country
+  void _playStation(String url, String name, String country, {double? needlePos}) {
     if (!_isPowerOn) {
       setState(() {
         _isPowerOn = true;
@@ -390,7 +391,8 @@ class _RadioPageState extends State<RadioPage> {
     });
     if (!mounted) return;
     setState(() {
-      _currentlyPlayingStation = name;
+      // [FIX] Format: "Station Name (Country)"
+      _currentlyPlayingStation = "$name ($country)";
     });
   }
 
@@ -406,13 +408,12 @@ class _RadioPageState extends State<RadioPage> {
   void _onStationTuned(int index) {
     if (_filteredStations.isNotEmpty && index < _filteredStations.length) {
       final station = _filteredStations[index];
-      _playStation(station['url_resolved'], station['name']);
+      _playStation(station['url_resolved'], station['name'], station['country']);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // [NEW] Define player background color based on state
     Color playerBackgroundColor = Colors.brown[300]!;
     if (_isPowerOn) {
       if (_playerState == PlayerState.playing) {
@@ -459,7 +460,6 @@ class _RadioPageState extends State<RadioPage> {
                   child: Column(
                     children: [
                       const SizedBox(height: 20),
-                      // [FIX] Dial now uses the reactive playerBackgroundColor
                       RotaryDial(
                         stationCount: _filteredStations.length,
                         onStationSelected: _onStationTuned,
@@ -510,7 +510,8 @@ class _RadioPageState extends State<RadioPage> {
                               children: _favouriteStations.asMap().entries.map((entry) {
                                 final int index = entry.key;
                                 final dynamic station = entry.value;
-                                final isPlaying = station['name'] == _currentlyPlayingStation;
+                                // [FIX] Updated isPlaying check to use startsWith
+                                final isPlaying = _currentlyPlayingStation != null && _currentlyPlayingStation!.startsWith(station['name']);
                                 
                                 return Tooltip(
                                   message: "Quick press to select, long press to modify",
@@ -531,7 +532,7 @@ class _RadioPageState extends State<RadioPage> {
                                         if (filteredIdx >= 0) {
                                           pos = filteredIdx / (_filteredStations.length > 1 ? _filteredStations.length - 1 : 1);
                                         }
-                                        _playStation(station['url_resolved'], station['name'], needlePos: pos);
+                                        _playStation(station['url_resolved'], station['name'], station['country'], needlePos: pos);
                                       },
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -630,7 +631,8 @@ class _RadioPageState extends State<RadioPage> {
                               itemCount: _filteredStations.length,
                               itemBuilder: (context, index) {
                                 final station = _filteredStations[index];
-                                final isSelected = station['name'] == _currentlyPlayingStation;
+                                // [FIX] Updated isPlaying check
+                                final isSelected = _currentlyPlayingStation != null && _currentlyPlayingStation!.startsWith(station['name']);
                                 final isFavourite = _favouriteStations.any((s) => s['stationuuid'] == station['stationuuid']);
                                 
                                 return Card(
@@ -642,7 +644,7 @@ class _RadioPageState extends State<RadioPage> {
                                             .trim()),
                                     onTap: () {
                                       final pos = index / (_filteredStations.length > 1 ? _filteredStations.length - 1 : 1);
-                                      _playStation(station['url_resolved'], station['name'], needlePos: pos);
+                                      _playStation(station['url_resolved'], station['name'], station['country'], needlePos: pos);
                                     },
                                     selected: isSelected,
                                     trailing: Row(
@@ -658,7 +660,7 @@ class _RadioPageState extends State<RadioPage> {
                                               _stopStation();
                                             } else {
                                               final pos = index / (_filteredStations.length > 1 ? _filteredStations.length - 1 : 1);
-                                              _playStation(station['url_resolved'], station['name'], needlePos: pos);
+                                              _playStation(station['url_resolved'], station['name'], station['country'], needlePos: pos);
                                             }
                                           },
                                         ),
@@ -696,7 +698,7 @@ class RotaryDial extends StatefulWidget {
   final bool isTuning;
   final double needlePosition;
   final ValueChanged<double> onNeedleChanged;
-  final Color backgroundColor; // [NEW] Accept dynamic color
+  final Color backgroundColor;
 
   const RotaryDial({
     super.key,
@@ -705,7 +707,7 @@ class RotaryDial extends StatefulWidget {
     required this.isTuning,
     required this.needlePosition,
     required this.onNeedleChanged,
-    required this.backgroundColor, // [NEW]
+    required this.backgroundColor,
     this.searchTerm,
   });
 
@@ -771,13 +773,12 @@ class _RotaryDialState extends State<RotaryDial> with SingleTickerProviderStateM
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Base dynamic background
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 500),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.black, width: 2),
-                    color: widget.backgroundColor, // [FIX] Uses dynamic state color
+                    color: widget.backgroundColor,
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8.0),
@@ -786,7 +787,6 @@ class _RotaryDialState extends State<RotaryDial> with SingleTickerProviderStateM
                       width: dialWidth,
                       height: dialHeight,
                       fit: BoxFit.cover,
-                      // [NEW] Use opacity to blend the image with the state color
                       opacity: const AlwaysStoppedAnimation(.6), 
                     ),
                   ),
@@ -803,7 +803,7 @@ class _RotaryDialState extends State<RotaryDial> with SingleTickerProviderStateM
                       width: dialWidth,
                       height: dialHeight,
                       fit: BoxFit.cover,
-                      opacity: const AlwaysStoppedAnimation(.6), // Blend network image too
+                      opacity: const AlwaysStoppedAnimation(.6), 
                       errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(), 
                       loadingBuilder: (context, child, loadingProgress) {
                         if (loadingProgress == null) return child;
