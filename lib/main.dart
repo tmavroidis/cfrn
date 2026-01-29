@@ -372,7 +372,6 @@ class _RadioPageState extends State<RadioPage> {
     );
   }
 
-  // [FIX] playStation now formats name to include country
   void _playStation(String url, String name, String country, {double? needlePos}) {
     if (!_isPowerOn) {
       setState(() {
@@ -391,7 +390,6 @@ class _RadioPageState extends State<RadioPage> {
     });
     if (!mounted) return;
     setState(() {
-      // [FIX] Format: "Station Name (Country)"
       _currentlyPlayingStation = "$name ($country)";
     });
   }
@@ -503,48 +501,57 @@ class _RadioPageState extends State<RadioPage> {
                             ),
                             const SizedBox(height: 8),
                             ReorderableWrap(
-                              spacing: 8,
-                              runSpacing: 8,
+                              spacing: 12,
+                              runSpacing: 12,
                               onReorder: _onReorder,
                               enableReorder: _isReorderMode, 
                               children: _favouriteStations.asMap().entries.map((entry) {
                                 final int index = entry.key;
                                 final dynamic station = entry.value;
-                                // [FIX] Updated isPlaying check to use startsWith
                                 final isPlaying = _currentlyPlayingStation != null && _currentlyPlayingStation!.startsWith(station['name']);
                                 
                                 return Tooltip(
-                                  message: "Quick press to select, long press to modify",
+                                  message: "${station['name']}\n${station['state'] ?? ''}, ${station['country'] ?? ''}\nQuick press to select, long press to modify",
                                   waitDuration: const Duration(seconds: 2),
                                   child: GestureDetector(
                                     key: ValueKey(station['stationuuid']),
+                                    onTap: _isReorderMode ? null : () {
+                                      final filteredIdx = _filteredStations.indexWhere((s) => s['stationuuid'] == station['stationuuid']);
+                                      double? pos;
+                                      if (filteredIdx >= 0) {
+                                        pos = filteredIdx / (_filteredStations.length > 1 ? _filteredStations.length - 1 : 1);
+                                      }
+                                      _playStation(station['url_resolved'], station['name'], station['country'], needlePos: pos);
+                                    },
                                     onLongPress: _isReorderMode ? null : () => _showPresetOptions(index),
                                     onSecondaryTap: _isReorderMode ? null : () => _confirmRemovePreset(index),
-                                    child: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: isPlaying ? Colors.brown : Colors.brown[300],
-                                        foregroundColor: Colors.white,
-                                        side: _isReorderMode ? const BorderSide(color: Colors.white, width: 2) : null,
-                                      ),
-                                      onPressed: _isReorderMode ? null : () {
-                                        final filteredIdx = _filteredStations.indexWhere((s) => s['stationuuid'] == station['stationuuid']);
-                                        double? pos;
-                                        if (filteredIdx >= 0) {
-                                          pos = filteredIdx / (_filteredStations.length > 1 ? _filteredStations.length - 1 : 1);
-                                        }
-                                        _playStation(station['url_resolved'], station['name'], station['country'], needlePos: pos);
-                                      },
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (_isReorderMode) const Icon(Icons.drag_handle, size: 16),
-                                          if (_isReorderMode) const SizedBox(width: 4),
-                                          Text(
-                                            station['name'],
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
+                                    child: AnimatedContainer(
+                                      duration: const Duration(milliseconds: 300),
+                                      width: 45,
+                                      height: 45,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: isPlaying ? Colors.brown : Colors.brown[300],
+                                        border: _isReorderMode 
+                                            ? Border.all(color: Colors.white, width: 2) 
+                                            : Border.all(color: Colors.black26, width: 1),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(0.2),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          )
                                         ],
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          '${index + 1}',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -631,7 +638,6 @@ class _RadioPageState extends State<RadioPage> {
                               itemCount: _filteredStations.length,
                               itemBuilder: (context, index) {
                                 final station = _filteredStations[index];
-                                // [FIX] Updated isPlaying check
                                 final isSelected = _currentlyPlayingStation != null && _currentlyPlayingStation!.startsWith(station['name']);
                                 final isFavourite = _favouriteStations.any((s) => s['stationuuid'] == station['stationuuid']);
                                 
