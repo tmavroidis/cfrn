@@ -138,11 +138,30 @@ class _RadioPageState extends State<RadioPage> {
   }
 
   void _showPresetOptions(int index) {
+    final station = _favouriteStations[index];
     showModalBottomSheet(
       context: context,
       builder: (context) {
         return Wrap(
           children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    station['name'],
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    "${station['state'] ?? ''}, ${station['country'] ?? ''}".trim(),
+                    style: const TextStyle(color: Colors.black54),
+                  ),
+                  const Divider(),
+                ],
+              ),
+            ),
             ListTile(
               leading: const Icon(Icons.edit),
               title: const Text('Rename'),
