@@ -444,7 +444,22 @@ class _RadioPageState extends State<RadioPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Retro Radio', style: GoogleFonts.bungeeInline()),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: Image.asset(
+                'assets/radio.jpg',
+                height: 32,
+                width: 32,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text('Retro Radio', style: GoogleFonts.bungeeInline()),
+          ],
+        ),
         actions: [
           Row(
             children: [
@@ -709,7 +724,6 @@ class _RadioPageState extends State<RadioPage> {
                 ),
               ),
               const SizedBox(height: 40),
-              // [FIX] Changed attribution text color to black
               const Text(
                 'Opensource station information provided by radio-station.info and Images by unsplash.com.',
                 textAlign: TextAlign.center,
