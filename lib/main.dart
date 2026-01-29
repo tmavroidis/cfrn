@@ -708,6 +708,14 @@ class _RadioPageState extends State<RadioPage> {
                   ),
                 ),
               ),
+              const SizedBox(height: 40),
+              // [FIX] Changed attribution text color to black
+              const Text(
+                'Opensource station information provided by radio-station.info and Images by unsplash.com.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 10, color: Colors.black),
+              ),
+              const SizedBox(height: 20),
             ],
           ),
         ),
