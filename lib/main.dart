@@ -80,7 +80,6 @@ class _RadioPageState extends State<RadioPage> {
   bool _showStationSelector = false;
   bool _isReorderMode = false;
 
-  // [NEW] Tuning animation state
   bool _isTuning = false;
   double _needlePosition = 0.0;
 
@@ -92,7 +91,6 @@ class _RadioPageState extends State<RadioPage> {
       if (!mounted) return;
       setState(() {
         _playerState = s;
-        // [FIX] Stop tuning animation when audio starts or stops
         if (s == PlayerState.playing || s == PlayerState.stopped || s == PlayerState.paused || s == PlayerState.completed) {
           _isTuning = false;
         }
@@ -374,7 +372,6 @@ class _RadioPageState extends State<RadioPage> {
     );
   }
 
-  // [FIX] playStation now manages the _isTuning state
   void _playStation(String url, String name, {double? needlePos}) {
     if (!_isPowerOn) {
       setState(() {
@@ -415,6 +412,18 @@ class _RadioPageState extends State<RadioPage> {
 
   @override
   Widget build(BuildContext context) {
+    // [NEW] Define player background color based on state
+    Color playerBackgroundColor = Colors.brown[300]!;
+    if (_isPowerOn) {
+      if (_playerState == PlayerState.playing) {
+        playerBackgroundColor = Colors.green[300]!;
+      } else if (_playerState == PlayerState.paused) {
+        playerBackgroundColor = Colors.yellow[300]!;
+      } else if (_playerState == PlayerState.stopped || _playerState == null) {
+        playerBackgroundColor = Colors.red[300]!;
+      }
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Retro Radio', style: GoogleFonts.bungeeInline()),
@@ -450,13 +459,14 @@ class _RadioPageState extends State<RadioPage> {
                   child: Column(
                     children: [
                       const SizedBox(height: 20),
-                      // [FIX] Pass tuning state and needle position to the dial
+                      // [FIX] Dial now uses the reactive playerBackgroundColor
                       RotaryDial(
                         stationCount: _filteredStations.length,
                         onStationSelected: _onStationTuned,
                         isTuning: _isTuning,
                         needlePosition: _needlePosition,
                         onNeedleChanged: (pos) => setState(() => _needlePosition = pos),
+                        backgroundColor: playerBackgroundColor,
                         searchTerm: _selectedSubdivision != null && _selectedSubdivision != 'All' 
                             ? '$_selectedSubdivision, $_selectedCountryName'
                             : _selectedCountryName,
@@ -516,7 +526,6 @@ class _RadioPageState extends State<RadioPage> {
                                         side: _isReorderMode ? const BorderSide(color: Colors.white, width: 2) : null,
                                       ),
                                       onPressed: _isReorderMode ? null : () {
-                                        // Attempt to find current index in filtered list to update needle
                                         final filteredIdx = _filteredStations.indexWhere((s) => s['stationuuid'] == station['stationuuid']);
                                         double? pos;
                                         if (filteredIdx >= 0) {
@@ -687,6 +696,7 @@ class RotaryDial extends StatefulWidget {
   final bool isTuning;
   final double needlePosition;
   final ValueChanged<double> onNeedleChanged;
+  final Color backgroundColor; // [NEW] Accept dynamic color
 
   const RotaryDial({
     super.key,
@@ -695,6 +705,7 @@ class RotaryDial extends StatefulWidget {
     required this.isTuning,
     required this.needlePosition,
     required this.onNeedleChanged,
+    required this.backgroundColor, // [NEW]
     this.searchTerm,
   });
 
@@ -703,7 +714,6 @@ class RotaryDial extends StatefulWidget {
 }
 
 class _RotaryDialState extends State<RotaryDial> with SingleTickerProviderStateMixin {
-  // [NEW] Animation controller for jitter effect
   late AnimationController _jitterController;
 
   @override
@@ -761,11 +771,13 @@ class _RotaryDialState extends State<RotaryDial> with SingleTickerProviderStateM
             child: Stack(
               alignment: Alignment.center,
               children: [
-                Container(
+                // Base dynamic background
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 500),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.black, width: 2),
-                    color: Colors.brown[800],
+                    color: widget.backgroundColor, // [FIX] Uses dynamic state color
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8.0),
@@ -774,6 +786,8 @@ class _RotaryDialState extends State<RotaryDial> with SingleTickerProviderStateM
                       width: dialWidth,
                       height: dialHeight,
                       fit: BoxFit.cover,
+                      // [NEW] Use opacity to blend the image with the state color
+                      opacity: const AlwaysStoppedAnimation(.6), 
                     ),
                   ),
                 ),
@@ -789,6 +803,7 @@ class _RotaryDialState extends State<RotaryDial> with SingleTickerProviderStateM
                       width: dialWidth,
                       height: dialHeight,
                       fit: BoxFit.cover,
+                      opacity: const AlwaysStoppedAnimation(.6), // Blend network image too
                       errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(), 
                       loadingBuilder: (context, child, loadingProgress) {
                         if (loadingProgress == null) return child;
@@ -797,11 +812,9 @@ class _RotaryDialState extends State<RotaryDial> with SingleTickerProviderStateM
                     ),
                   ),
                 ),
-                // [FIX] Animated needle with jitter support
                 AnimatedBuilder(
                   animation: _jitterController,
                   builder: (context, child) {
-                    // Add jitter offset if tuning
                     final double jitter = widget.isTuning ? (_jitterController.value * 0.01 - 0.005) : 0.0;
                     return TweenAnimationBuilder<double>(
                       tween: Tween<double>(begin: widget.needlePosition, end: widget.needlePosition),
