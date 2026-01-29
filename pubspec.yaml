@@ -22,10 +22,22 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.0
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/radio.jpg"
+  min_sdk_android: 21
+
+flutter_native_splash:
+  color: "#ffffff"
+  image: "assets/radio.jpg"
+  android: true
+  ios: true
 
 flutter:
   uses-material-design: true
-
-  # [FIX] Declare the assets directory
   assets:
     - assets/

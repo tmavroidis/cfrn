@@ -17,6 +17,7 @@ void main() async {
     await windowManager.ensureInitialized();
     WindowOptions windowOptions = const WindowOptions(
       size: Size(400, 800),
+      minimumSize: Size(300, 600),
       center: true,
       backgroundColor: Colors.transparent,
       skipTaskbar: false,
@@ -25,7 +26,6 @@ void main() async {
     windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.show();
       await windowManager.focus();
-      await windowManager.setResizable(false);
     });
   }
 
@@ -78,8 +78,11 @@ class _RadioPageState extends State<RadioPage> {
   SharedPreferences? _prefs;
 
   bool _showStationSelector = false;
-  // [NEW] Track reorder mode
   bool _isReorderMode = false;
+
+  // [NEW] Tuning animation state
+  bool _isTuning = false;
+  double _needlePosition = 0.0;
 
   @override
   void initState() {
@@ -89,6 +92,10 @@ class _RadioPageState extends State<RadioPage> {
       if (!mounted) return;
       setState(() {
         _playerState = s;
+        // [FIX] Stop tuning animation when audio starts or stops
+        if (s == PlayerState.playing || s == PlayerState.stopped || s == PlayerState.paused || s == PlayerState.completed) {
+          _isTuning = false;
+        }
       });
     });
     _resolveApiServer();
@@ -146,7 +153,6 @@ class _RadioPageState extends State<RadioPage> {
                 _renamePreset(index);
               },
             ),
-            // [NEW] Option to enable reordering
             ListTile(
               leading: const Icon(Icons.reorder),
               title: const Text('Reorder Presets'),
@@ -368,13 +374,23 @@ class _RadioPageState extends State<RadioPage> {
     );
   }
 
-  void _playStation(String url, String name) {
+  // [FIX] playStation now manages the _isTuning state
+  void _playStation(String url, String name, {double? needlePos}) {
     if (!_isPowerOn) {
       setState(() {
         _isPowerOn = true;
       });
     }
-    _audioPlayer.play(UrlSource(url));
+    setState(() {
+      _isTuning = true;
+      if (needlePos != null) {
+        _needlePosition = needlePos;
+      }
+    });
+    _audioPlayer.play(UrlSource(url)).catchError((e) {
+      setState(() => _isTuning = false);
+      _showError("Failed to play: $e");
+    });
     if (!mounted) return;
     setState(() {
       _currentlyPlayingStation = name;
@@ -386,6 +402,7 @@ class _RadioPageState extends State<RadioPage> {
     if (!mounted) return;
     setState(() {
       _currentlyPlayingStation = null;
+      _isTuning = false;
     });
   }
 
@@ -433,9 +450,13 @@ class _RadioPageState extends State<RadioPage> {
                   child: Column(
                     children: [
                       const SizedBox(height: 20),
+                      // [FIX] Pass tuning state and needle position to the dial
                       RotaryDial(
                         stationCount: _filteredStations.length,
                         onStationSelected: _onStationTuned,
+                        isTuning: _isTuning,
+                        needlePosition: _needlePosition,
+                        onNeedleChanged: (pos) => setState(() => _needlePosition = pos),
                         searchTerm: _selectedSubdivision != null && _selectedSubdivision != 'All' 
                             ? '$_selectedSubdivision, $_selectedCountryName'
                             : _selectedCountryName,
@@ -450,7 +471,7 @@ class _RadioPageState extends State<RadioPage> {
                       const SizedBox(height: 4),
                       if (_isPowerOn)
                         Text(
-                          'State: ${_playerState?.toString().split('.').last ?? 'unknown'}',
+                          _isTuning ? 'Tuning...' : 'State: ${_playerState?.toString().split('.').last ?? 'unknown'}',
                           style: GoogleFonts.orbitron(fontSize: 10, color: Colors.black54),
                         ),
                       const SizedBox(height: 20),
@@ -475,35 +496,46 @@ class _RadioPageState extends State<RadioPage> {
                               spacing: 8,
                               runSpacing: 8,
                               onReorder: _onReorder,
-                              // [FIX] Use state to control reordering and prevent conflicts
                               enableReorder: _isReorderMode, 
                               children: _favouriteStations.asMap().entries.map((entry) {
                                 final int index = entry.key;
                                 final dynamic station = entry.value;
                                 final isPlaying = station['name'] == _currentlyPlayingStation;
                                 
-                                return GestureDetector(
-                                  key: ValueKey(station['stationuuid']),
-                                  onLongPress: _isReorderMode ? null : () => _showPresetOptions(index),
-                                  onSecondaryTap: _isReorderMode ? null : () => _confirmRemovePreset(index),
-                                  child: ElevatedButton(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: isPlaying ? Colors.brown : Colors.brown[300],
-                                      foregroundColor: Colors.white,
-                                      side: _isReorderMode ? const BorderSide(color: Colors.white, width: 2) : null,
-                                    ),
-                                    onPressed: _isReorderMode ? null : () => _playStation(station['url_resolved'], station['name']),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (_isReorderMode) const Icon(Icons.drag_handle, size: 16),
-                                        if (_isReorderMode) const SizedBox(width: 4),
-                                        Text(
-                                          station['name'],
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
+                                return Tooltip(
+                                  message: "Quick press to select, long press to modify",
+                                  waitDuration: const Duration(seconds: 2),
+                                  child: GestureDetector(
+                                    key: ValueKey(station['stationuuid']),
+                                    onLongPress: _isReorderMode ? null : () => _showPresetOptions(index),
+                                    onSecondaryTap: _isReorderMode ? null : () => _confirmRemovePreset(index),
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: isPlaying ? Colors.brown : Colors.brown[300],
+                                        foregroundColor: Colors.white,
+                                        side: _isReorderMode ? const BorderSide(color: Colors.white, width: 2) : null,
+                                      ),
+                                      onPressed: _isReorderMode ? null : () {
+                                        // Attempt to find current index in filtered list to update needle
+                                        final filteredIdx = _filteredStations.indexWhere((s) => s['stationuuid'] == station['stationuuid']);
+                                        double? pos;
+                                        if (filteredIdx >= 0) {
+                                          pos = filteredIdx / (_filteredStations.length > 1 ? _filteredStations.length - 1 : 1);
+                                        }
+                                        _playStation(station['url_resolved'], station['name'], needlePos: pos);
+                                      },
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (_isReorderMode) const Icon(Icons.drag_handle, size: 16),
+                                          if (_isReorderMode) const SizedBox(width: 4),
+                                          Text(
+                                            station['name'],
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 );
@@ -599,7 +631,10 @@ class _RadioPageState extends State<RadioPage> {
                                     subtitle: Text(
                                         "${station['state'] ?? ''}, ${station['country'] ?? ''}"
                                             .trim()),
-                                    onTap: () => _playStation(station['url_resolved'], station['name']),
+                                    onTap: () {
+                                      final pos = index / (_filteredStations.length > 1 ? _filteredStations.length - 1 : 1);
+                                      _playStation(station['url_resolved'], station['name'], needlePos: pos);
+                                    },
                                     selected: isSelected,
                                     trailing: Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -613,7 +648,8 @@ class _RadioPageState extends State<RadioPage> {
                                             if (isSelected) {
                                               _stopStation();
                                             } else {
-                                              _playStation(station['url_resolved'], station['name']);
+                                              final pos = index / (_filteredStations.length > 1 ? _filteredStations.length - 1 : 1);
+                                              _playStation(station['url_resolved'], station['name'], needlePos: pos);
                                             }
                                           },
                                         ),
@@ -648,11 +684,17 @@ class RotaryDial extends StatefulWidget {
   final Function(int) onStationSelected;
   final int stationCount;
   final String? searchTerm;
+  final bool isTuning;
+  final double needlePosition;
+  final ValueChanged<double> onNeedleChanged;
 
   const RotaryDial({
     super.key,
     required this.onStationSelected,
     required this.stationCount,
+    required this.isTuning,
+    required this.needlePosition,
+    required this.onNeedleChanged,
     this.searchTerm,
   });
 
@@ -660,8 +702,35 @@ class RotaryDial extends StatefulWidget {
   State<RotaryDial> createState() => _RotaryDialState();
 }
 
-class _RotaryDialState extends State<RotaryDial> {
-  double _needlePosition = 0.0;
+class _RotaryDialState extends State<RotaryDial> with SingleTickerProviderStateMixin {
+  // [NEW] Animation controller for jitter effect
+  late AnimationController _jitterController;
+
+  @override
+  void initState() {
+    super.initState();
+    _jitterController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+    );
+    if (widget.isTuning) _jitterController.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(RotaryDial oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isTuning && !oldWidget.isTuning) {
+      _jitterController.repeat(reverse: true);
+    } else if (!widget.isTuning && oldWidget.isTuning) {
+      _jitterController.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _jitterController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -677,14 +746,12 @@ class _RotaryDialState extends State<RotaryDial> {
 
         return GestureDetector(
           onPanUpdate: (details) {
-            final newPosition = _needlePosition + (details.delta.dx / dialWidth);
-            setState(() {
-              _needlePosition = newPosition.clamp(0.0, 1.0);
-            });
+            final newPosition = widget.needlePosition + (details.delta.dx / dialWidth);
+            widget.onNeedleChanged(newPosition.clamp(0.0, 1.0));
           },
           onPanEnd: (details) {
             if (widget.stationCount > 0) {
-              final stationIndex = (_needlePosition * (widget.stationCount - 1)).round();
+              final stationIndex = (widget.needlePosition * (widget.stationCount - 1)).round();
               widget.onStationSelected(stationIndex);
             }
           },
@@ -730,14 +797,30 @@ class _RotaryDialState extends State<RotaryDial> {
                     ),
                   ),
                 ),
-                Positioned(
-                  left: _needlePosition * (dialWidth - 4) - 1,
-                  top: 4,
-                  bottom: 4,
-                  child: Container(
-                    width: 2,
-                    color: Colors.red[700],
-                  ),
+                // [FIX] Animated needle with jitter support
+                AnimatedBuilder(
+                  animation: _jitterController,
+                  builder: (context, child) {
+                    // Add jitter offset if tuning
+                    final double jitter = widget.isTuning ? (_jitterController.value * 0.01 - 0.005) : 0.0;
+                    return TweenAnimationBuilder<double>(
+                      tween: Tween<double>(begin: widget.needlePosition, end: widget.needlePosition),
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                      builder: (context, pos, child) {
+                        return Positioned(
+                          left: (pos + jitter).clamp(0.0, 1.0) * (dialWidth - 4) - 1,
+                          top: 4,
+                          bottom: 4,
+                          child: child!,
+                        );
+                      },
+                      child: Container(
+                        width: 2,
+                        color: Colors.red[700],
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
