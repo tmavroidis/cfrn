@@ -9,6 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:reorderables/reorderables.dart';
+import 'package:file_picker/file_picker.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -115,6 +116,57 @@ class _RadioPageState extends State<RadioPage> {
 
   Future<void> _saveFavourites() async {
     await _prefs?.setString('favourite_stations', json.encode(_favouriteStations));
+  }
+
+  // [NEW] Export Favourites to a JSON file
+  Future<void> _exportFavourites() async {
+    try {
+      String jsonString = json.encode(_favouriteStations);
+      String? outputPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Export Favourites',
+        fileName: 'radio_presets.json',
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+
+      if (outputPath != null) {
+        final File file = File(outputPath);
+        await file.writeAsString(jsonString);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Favourites exported successfully!')),
+        );
+      }
+    } catch (e) {
+      _showError('Export failed: $e');
+    }
+  }
+
+  // [NEW] Import Favourites from a JSON file
+  Future<void> _importFavourites() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final File file = File(result.files.single.path!);
+        String content = await file.readAsString();
+        List<dynamic> importedFavs = json.decode(content);
+
+        setState(() {
+          _favouriteStations = importedFavs;
+        });
+        await _saveFavourites();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Favourites imported successfully!')),
+        );
+      }
+    } catch (e) {
+      _showError('Import failed: $e');
+    }
   }
 
   void _toggleFavourite(dynamic station) {
@@ -461,6 +513,17 @@ class _RadioPageState extends State<RadioPage> {
           ],
         ),
         actions: [
+          // [NEW] Export/Import buttons
+          IconButton(
+            icon: const Icon(Icons.file_download),
+            tooltip: 'Export Favourites',
+            onPressed: _exportFavourites,
+          ),
+          IconButton(
+            icon: const Icon(Icons.file_upload),
+            tooltip: 'Import Favourites',
+            onPressed: _importFavourites,
+          ),
           Row(
             children: [
               const Text('Power'),
