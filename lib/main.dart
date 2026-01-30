@@ -10,6 +10,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:reorderables/reorderables.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,6 +64,8 @@ class _RadioPageState extends State<RadioPage> {
   List<dynamic> _stations = [];
   final AudioPlayer _audioPlayer = AudioPlayer();
   String? _currentlyPlayingStation;
+  String? _currentlyPlayingFavicon;
+  String? _currentlyPlayingHomepage;
   bool _isLoadingCountries = false;
   bool _isLoadingStations = false;
   bool _isResolvingServer = false;
@@ -118,7 +121,6 @@ class _RadioPageState extends State<RadioPage> {
     await _prefs?.setString('favourite_stations', json.encode(_favouriteStations));
   }
 
-  // [NEW] Export Favourites to a JSON file
   Future<void> _exportFavourites() async {
     try {
       String jsonString = json.encode(_favouriteStations);
@@ -142,7 +144,6 @@ class _RadioPageState extends State<RadioPage> {
     }
   }
 
-  // [NEW] Import Favourites from a JSON file
   Future<void> _importFavourites() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -443,7 +444,7 @@ class _RadioPageState extends State<RadioPage> {
     );
   }
 
-  void _playStation(String url, String name, String country, {double? needlePos}) {
+  void _playStation(String url, String name, String country, {double? needlePos, String? favicon, String? homepage}) {
     if (!_isPowerOn) {
       setState(() {
         _isPowerOn = true;
@@ -462,6 +463,8 @@ class _RadioPageState extends State<RadioPage> {
     if (!mounted) return;
     setState(() {
       _currentlyPlayingStation = "$name ($country)";
+      _currentlyPlayingFavicon = favicon;
+      _currentlyPlayingHomepage = homepage;
     });
   }
 
@@ -470,6 +473,8 @@ class _RadioPageState extends State<RadioPage> {
     if (!mounted) return;
     setState(() {
       _currentlyPlayingStation = null;
+      _currentlyPlayingFavicon = null;
+      _currentlyPlayingHomepage = null;
       _isTuning = false;
     });
   }
@@ -477,7 +482,14 @@ class _RadioPageState extends State<RadioPage> {
   void _onStationTuned(int index) {
     if (_filteredStations.isNotEmpty && index < _filteredStations.length) {
       final station = _filteredStations[index];
-      _playStation(station['url_resolved'], station['name'], station['country']);
+      _playStation(station['url_resolved'], station['name'], station['country'], favicon: station['favicon'], homepage: station['homepage']);
+    }
+  }
+
+  Future<void> _launchURL(String url) async {
+    final Uri uri = Uri.parse(url);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      _showError('Could not launch $url');
     }
   }
 
@@ -509,11 +521,10 @@ class _RadioPageState extends State<RadioPage> {
               ),
             ),
             const SizedBox(width: 10),
-            Text('Retro Radio', style: GoogleFonts.bungeeInline()),
+            Text('Web Radio', style: GoogleFonts.bungeeInline()),
           ],
         ),
         actions: [
-          // [NEW] Export/Import buttons
           IconButton(
             icon: const Icon(Icons.file_download),
             tooltip: 'Export Favourites',
@@ -618,7 +629,7 @@ class _RadioPageState extends State<RadioPage> {
                                       if (filteredIdx >= 0) {
                                         pos = filteredIdx / (_filteredStations.length > 1 ? _filteredStations.length - 1 : 1);
                                       }
-                                      _playStation(station['url_resolved'], station['name'], station['country'], needlePos: pos);
+                                      _playStation(station['url_resolved'], station['name'], station['country'], needlePos: pos, favicon: station['favicon'], homepage: station['homepage']);
                                     },
                                     onLongPress: _isReorderMode ? null : () => _showPresetOptions(index),
                                     onSecondaryTap: _isReorderMode ? null : () => _confirmRemovePreset(index),
@@ -747,7 +758,7 @@ class _RadioPageState extends State<RadioPage> {
                                             .trim()),
                                     onTap: () {
                                       final pos = index / (_filteredStations.length > 1 ? _filteredStations.length - 1 : 1);
-                                      _playStation(station['url_resolved'], station['name'], station['country'], needlePos: pos);
+                                      _playStation(station['url_resolved'], station['name'], station['country'], needlePos: pos, favicon: station['favicon'], homepage: station['homepage']);
                                     },
                                     selected: isSelected,
                                     trailing: Row(
@@ -763,7 +774,7 @@ class _RadioPageState extends State<RadioPage> {
                                               _stopStation();
                                             } else {
                                               final pos = index / (_filteredStations.length > 1 ? _filteredStations.length - 1 : 1);
-                                              _playStation(station['url_resolved'], station['name'], station['country'], needlePos: pos);
+                                              _playStation(station['url_resolved'], station['name'], station['country'], needlePos: pos, favicon: station['favicon'], homepage: station['homepage']);
                                             }
                                           },
                                         ),
@@ -786,7 +797,34 @@ class _RadioPageState extends State<RadioPage> {
                   ),
                 ),
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 20),
+              if (_currentlyPlayingStation != null)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (_currentlyPlayingFavicon != null && _currentlyPlayingFavicon!.isNotEmpty)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          _currentlyPlayingFavicon!,
+                          height: 64,
+                          width: 64,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                        ),
+                      ),
+                    if (_currentlyPlayingHomepage != null && _currentlyPlayingHomepage!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 16.0),
+                        child: IconButton(
+                          icon: const Icon(Icons.home, size: 32, color: Colors.brown),
+                          tooltip: 'Visit Homepage',
+                          onPressed: () => _launchURL(_currentlyPlayingHomepage!),
+                        ),
+                      ),
+                  ],
+                ),
+              const SizedBox(height: 20),
               const Text(
                 'Opensource station information provided by radio-station.info and Images by unsplash.com.',
                 textAlign: TextAlign.center,
