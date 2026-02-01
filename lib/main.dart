@@ -900,10 +900,10 @@ class RotaryDial extends StatefulWidget {
   });
 
   @override
-  State<RotaryDial> createState() => _RotaryDialState();
+  State<RotaryDial> createState() => _RadioDialState();
 }
 
-class _RotaryDialState extends State<RotaryDial> with SingleTickerProviderStateMixin {
+class _RadioDialState extends State<RotaryDial> with SingleTickerProviderStateMixin {
   late AnimationController _jitterController;
 
   @override
