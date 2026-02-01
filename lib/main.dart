@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -124,16 +125,23 @@ class _RadioPageState extends State<RadioPage> {
   Future<void> _exportFavourites() async {
     try {
       String jsonString = json.encode(_favouriteStations);
+      // [FIX] Required bytes for mobile platforms
+      Uint8List bytes = Uint8List.fromList(utf8.encode(jsonString));
+      
       String? outputPath = await FilePicker.platform.saveFile(
         dialogTitle: 'Export Favourites',
         fileName: 'radio_presets.json',
         type: FileType.custom,
         allowedExtensions: ['json'],
+        bytes: bytes, // [FIX] Passing the required bytes
       );
 
       if (outputPath != null) {
-        final File file = File(outputPath);
-        await file.writeAsString(jsonString);
+        // Desktop platforms might still need manual write
+        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+          final File file = File(outputPath);
+          await file.writeAsString(jsonString);
+        }
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Favourites exported successfully!')),
@@ -506,6 +514,8 @@ class _RadioPageState extends State<RadioPage> {
       }
     }
 
+    final bool isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
+
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -521,20 +531,29 @@ class _RadioPageState extends State<RadioPage> {
               ),
             ),
             const SizedBox(width: 10),
-            Text('Web Radio', style: GoogleFonts.bungeeInline()),
+            Flexible(
+              child: Text(
+                'Retro Radio',
+                style: GoogleFonts.bungeeInline(),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.file_download),
-            tooltip: 'Export Favourites',
-            onPressed: _exportFavourites,
-          ),
-          IconButton(
-            icon: const Icon(Icons.file_upload),
-            tooltip: 'Import Favourites',
-            onPressed: _importFavourites,
-          ),
+          // Desktop specific header buttons
+          if (!isPortrait) ...[
+            IconButton(
+              icon: const Icon(Icons.file_download),
+              tooltip: 'Export Favourites',
+              onPressed: _exportFavourites,
+            ),
+            IconButton(
+              icon: const Icon(Icons.file_upload),
+              tooltip: 'Import Favourites',
+              onPressed: _importFavourites,
+            ),
+          ],
           Row(
             children: [
               const Text('Power'),
@@ -559,6 +578,27 @@ class _RadioPageState extends State<RadioPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.start,
             children: <Widget>[
+              // [NEW] Mobile specific transfer buttons line
+              if (isPortrait) 
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      TextButton.icon(
+                        icon: const Icon(Icons.file_download),
+                        label: const Text('Export'),
+                        onPressed: _exportFavourites,
+                      ),
+                      const SizedBox(width: 20),
+                      TextButton.icon(
+                        icon: const Icon(Icons.file_upload),
+                        label: const Text('Import'),
+                        onPressed: _importFavourites,
+                      ),
+                    ],
+                  ),
+                ),
               Opacity(
                 opacity: _isPowerOn ? 1.0 : 0.4,
                 child: AbsorbPointer(
