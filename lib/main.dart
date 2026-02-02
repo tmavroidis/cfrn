@@ -125,7 +125,6 @@ class _RadioPageState extends State<RadioPage> {
   Future<void> _exportFavourites() async {
     try {
       String jsonString = json.encode(_favouriteStations);
-      // [FIX] Required bytes for mobile platforms
       Uint8List bytes = Uint8List.fromList(utf8.encode(jsonString));
       
       String? outputPath = await FilePicker.platform.saveFile(
@@ -133,11 +132,10 @@ class _RadioPageState extends State<RadioPage> {
         fileName: 'radio_presets.json',
         type: FileType.custom,
         allowedExtensions: ['json'],
-        bytes: bytes, // [FIX] Passing the required bytes
+        bytes: bytes,
       );
 
       if (outputPath != null) {
-        // Desktop platforms might still need manual write
         if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
           final File file = File(outputPath);
           await file.writeAsString(jsonString);
@@ -176,6 +174,34 @@ class _RadioPageState extends State<RadioPage> {
     } catch (e) {
       _showError('Import failed: $e');
     }
+  }
+
+  void _confirmClearFavourites() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Clear All Presets'),
+          content: const Text('Are you sure you want to permanently delete all your favourite station presets?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _favouriteStations = [];
+                });
+                _saveFavourites();
+                Navigator.pop(context);
+              },
+              child: const Text('Clear All', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _toggleFavourite(dynamic station) {
@@ -531,6 +557,7 @@ class _RadioPageState extends State<RadioPage> {
               ),
             ),
             const SizedBox(width: 10),
+            // [FIX] Wrapped in Flexible to prevent overflow
             Flexible(
               child: Text(
                 'Retro Radio',
@@ -552,6 +579,11 @@ class _RadioPageState extends State<RadioPage> {
               icon: const Icon(Icons.file_upload),
               tooltip: 'Import Favourites',
               onPressed: _importFavourites,
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
+              tooltip: 'Clear All Presets',
+              onPressed: _confirmClearFavourites,
             ),
           ],
           Row(
@@ -585,16 +617,22 @@ class _RadioPageState extends State<RadioPage> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      TextButton.icon(
+                      IconButton(
                         icon: const Icon(Icons.file_download),
-                        label: const Text('Export'),
                         onPressed: _exportFavourites,
+                        tooltip: 'Export',
                       ),
-                      const SizedBox(width: 20),
-                      TextButton.icon(
+                      const SizedBox(width: 15),
+                      IconButton(
                         icon: const Icon(Icons.file_upload),
-                        label: const Text('Import'),
                         onPressed: _importFavourites,
+                        tooltip: 'Import',
+                      ),
+                      const SizedBox(width: 15),
+                      IconButton(
+                        icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
+                        onPressed: _confirmClearFavourites,
+                        tooltip: 'Clear All',
                       ),
                     ],
                   ),
@@ -692,14 +730,27 @@ class _RadioPageState extends State<RadioPage> {
                                         ],
                                       ),
                                       child: Center(
-                                        child: Text(
-                                          '${index + 1}',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
-                                          ),
-                                        ),
+                                        child: (station['favicon'] != null && station['favicon'].toString().isNotEmpty)
+                                            ? ClipOval(
+                                                child: Image.network(
+                                                  station['favicon'],
+                                                  width: 40,
+                                                  height: 40,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (context, error, stackTrace) => Text(
+                                                    '${index + 1}',
+                                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                                                  ),
+                                                ),
+                                              )
+                                            : Text(
+                                                '${index + 1}',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 16,
+                                                ),
+                                              ),
                                       ),
                                     ),
                                   ),
@@ -900,10 +951,10 @@ class RotaryDial extends StatefulWidget {
   });
 
   @override
-  State<RotaryDial> createState() => _RadioDialState();
+  State<RotaryDial> createState() => _RotaryDialState();
 }
 
-class _RadioDialState extends State<RotaryDial> with SingleTickerProviderStateMixin {
+class _RotaryDialState extends State<RotaryDial> with SingleTickerProviderStateMixin {
   late AnimationController _jitterController;
 
   @override
