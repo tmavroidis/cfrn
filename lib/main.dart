@@ -557,7 +557,6 @@ class _RadioPageState extends State<RadioPage> {
               ),
             ),
             const SizedBox(width: 10),
-            // [FIX] Wrapped in Flexible to prevent overflow
             Flexible(
               child: Text(
                 'Retro Radio',
@@ -568,7 +567,6 @@ class _RadioPageState extends State<RadioPage> {
           ],
         ),
         actions: [
-          // Desktop specific header buttons
           if (!isPortrait) ...[
             IconButton(
               icon: const Icon(Icons.file_download),
@@ -610,10 +608,9 @@ class _RadioPageState extends State<RadioPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.start,
             children: <Widget>[
-              // [NEW] Mobile specific transfer buttons line
               if (isPortrait) 
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 10.0),
+                  padding: const EdgeInsets.only(bottom: 15.0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -665,7 +662,7 @@ class _RadioPageState extends State<RadioPage> {
                       const SizedBox(height: 4),
                       if (_isPowerOn)
                         Text(
-                          _isTuning ? 'Tuning...' : 'State: ${_playerState?.toString().split('.').last ?? 'unknown'}',
+                          _isTuning ? 'wait - stations are being loaded' : 'State: ${_playerState?.toString().split('.').last ?? 'unknown'}',
                           style: GoogleFonts.orbitron(fontSize: 10, color: Colors.black54),
                         ),
                       const SizedBox(height: 20),
@@ -764,6 +761,10 @@ class _RadioPageState extends State<RadioPage> {
                         icon: Icon(_showStationSelector ? Icons.expand_less : Icons.expand_more),
                         label: const Text('Select Stations'),
                         onPressed: () {
+                          // [FIX] Persistent wait message display
+                          if (!_showStationSelector && _isLoadingStations) {
+                            _showError('wait - stations are being loaded');
+                          }
                           setState(() {
                             _showStationSelector = !_showStationSelector;
                           });
@@ -773,6 +774,15 @@ class _RadioPageState extends State<RadioPage> {
                       if (_showStationSelector)
                         Column(
                           children: [
+                            // [NEW] Display persistent wait message while loading
+                            if (_isLoadingStations)
+                              const Padding(
+                                padding: EdgeInsets.all(8.0),
+                                child: Text(
+                                  'wait - stations are being loaded',
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.brown),
+                                ),
+                              ),
                             DropdownButton<String>(
                               isExpanded: true,
                               hint: _isResolvingServer
