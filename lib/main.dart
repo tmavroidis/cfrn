@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -12,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:reorderables/reorderables.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:path_provider/path_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -75,7 +77,7 @@ class _RadioPageState extends State<RadioPage> {
   bool _isPowerOn = true;
   PlayerState? _playerState;
 
-  List<Map<String, Object>> _subdivisions = [];
+  List<dynamic> _subdivisions = [];
   String? _selectedSubdivision;
   List<dynamic> _filteredStations = [];
 
@@ -113,13 +115,45 @@ class _RadioPageState extends State<RadioPage> {
     final String? favsJson = _prefs?.getString('favourite_stations');
     if (favsJson != null) {
       setState(() {
-        _favouriteStations = json.decode(favsJson);
+        final decoded = json.decode(favsJson);
+        if (decoded is List) {
+          _favouriteStations = List<dynamic>.from(decoded.map((item) {
+            if (item is Map) {
+              return Map<String, dynamic>.from(item);
+            }
+            return item;
+          }));
+        }
       });
     }
   }
 
   Future<void> _saveFavourites() async {
     await _prefs?.setString('favourite_stations', json.encode(_favouriteStations));
+  }
+
+  // [NEW] Get local cache directory
+  Future<String> _getCacheFilePath(String countryCode) async {
+    final directory = await getApplicationDocumentsDirectory();
+    return '${directory.path}/stations_$countryCode.json';
+  }
+
+  // [NEW] Save station data to local cache
+  Future<void> _cacheStations(String countryCode, List<dynamic> stations) async {
+    final path = await _getCacheFilePath(countryCode);
+    final file = File(path);
+    await file.writeAsString(json.encode(stations));
+  }
+
+  // [NEW] Load station data from local cache
+  Future<List<dynamic>?> _loadCachedStations(String countryCode) async {
+    final path = await _getCacheFilePath(countryCode);
+    final file = File(path);
+    if (await file.exists()) {
+      final content = await file.readAsString();
+      return json.decode(content);
+    }
+    return null;
   }
 
   Future<void> _exportFavourites() async {
@@ -163,7 +197,12 @@ class _RadioPageState extends State<RadioPage> {
         List<dynamic> importedFavs = json.decode(content);
 
         setState(() {
-          _favouriteStations = importedFavs;
+          _favouriteStations = List<dynamic>.from(importedFavs.map((item) {
+            if (item is Map) {
+              return Map<String, dynamic>.from(item);
+            }
+            return item;
+          }));
         });
         await _saveFavourites();
         if (!mounted) return;
@@ -353,7 +392,8 @@ class _RadioPageState extends State<RadioPage> {
       _isResolvingServer = true;
     });
     try {
-      final response = await http.get(Uri.parse('https://all.api.radio-browser.info/json/servers'));
+      final response = await http.get(Uri.parse('https://all.api.radio-browser.info/json/servers'))
+          .timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
         final servers = json.decode(response.body) as List;
         if (servers.isNotEmpty) {
@@ -385,7 +425,8 @@ class _RadioPageState extends State<RadioPage> {
       _isLoadingCountries = true;
     });
     try {
-      final response = await http.get(Uri.parse('$_apiBaseUrl/json/countries'));
+      final response = await http.get(Uri.parse('$_apiBaseUrl/json/countries'))
+          .timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
         if (!mounted) return;
         final List<dynamic> countries = json.decode(response.body);
@@ -409,6 +450,7 @@ class _RadioPageState extends State<RadioPage> {
     });
   }
 
+  // [FIX] Updated to use local cache first
   Future<void> _handleCountryChange(String countryCode, String countryName) async {
     setState(() {
       _selectedCountryCode = countryCode;
@@ -420,19 +462,26 @@ class _RadioPageState extends State<RadioPage> {
       _isLoadingStations = true;
     });
 
-    List<dynamic> fetchedStations = [];
-    try {
-      final response = await http.get(Uri.parse('$_apiBaseUrl/json/stations/bycountrycodeexact/$countryCode'));
-      if (response.statusCode == 200) {
-        fetchedStations = json.decode(response.body);
-      } else {
-        _showError('Failed to load stations');
+    // Check cache first
+    List<dynamic>? fetchedStations = await _loadCachedStations(countryCode);
+
+    if (fetchedStations == null) {
+      try {
+        final response = await http.get(Uri.parse('$_apiBaseUrl/json/stations/bycountrycodeexact/$countryCode'))
+            .timeout(const Duration(seconds: 20));
+        if (response.statusCode == 200) {
+          fetchedStations = json.decode(response.body);
+          // Save to cache
+          await _cacheStations(countryCode, fetchedStations!);
+        } else {
+          _showError('Failed to load stations');
+        }
+      } catch (e) {
+        _showError('Error getting stations: $e');
       }
-    } catch (e) {
-      _showError('Error getting stations: $e');
     }
 
-    if (!mounted) return;
+    if (!mounted || fetchedStations == null) return;
 
     final onlineStations = fetchedStations.where((station) {
       final dynamic lastCheck = station['lastcheckok'];
@@ -452,15 +501,15 @@ class _RadioPageState extends State<RadioPage> {
     final List<String> subdivisionNames = stateSet.toList();
     subdivisionNames.sort();
 
-    final List<Map<String, Object>> subdivisions = subdivisionNames.map((name) {
-      return {
+    final List<dynamic> subdivisions = subdivisionNames.map((name) {
+      return <String, dynamic>{
         'name': name,
         'stationcount': onlineStations.where((s) => s['state'] == name).length,
       };
     }).toList();
 
     if (subdivisions.length > 1) {
-      subdivisions.insert(0, {'name': 'All', 'stationcount': onlineStations.length});
+      subdivisions.insert(0, <String, dynamic>{'name': 'All', 'stationcount': onlineStations.length});
     }
 
     setState(() {
@@ -761,7 +810,6 @@ class _RadioPageState extends State<RadioPage> {
                         icon: Icon(_showStationSelector ? Icons.expand_less : Icons.expand_more),
                         label: const Text('Select Stations'),
                         onPressed: () {
-                          // [FIX] Persistent wait message display
                           if (!_showStationSelector && _isLoadingStations) {
                             _showError('wait - stations are being loaded');
                           }
@@ -774,7 +822,6 @@ class _RadioPageState extends State<RadioPage> {
                       if (_showStationSelector)
                         Column(
                           children: [
-                            // [NEW] Display persistent wait message while loading
                             if (_isLoadingStations)
                               const Padding(
                                 padding: EdgeInsets.all(8.0),
@@ -823,8 +870,8 @@ class _RadioPageState extends State<RadioPage> {
                                       }
                                     });
                                   },
-                                  items: _subdivisions.map<DropdownMenuItem<String>>((Map<String, Object> subdivision) {
-                                    final String name = subdivision['name'] as String;
+                                  items: _subdivisions.map<DropdownMenuItem<String>>((dynamic subdivision) {
+                                    final String name = subdivision['name'].toString();
                                     final int stationCount = subdivision['stationcount'] as int;
                                     return DropdownMenuItem<String>(
                                       value: name,
