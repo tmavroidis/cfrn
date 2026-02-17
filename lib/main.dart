@@ -77,7 +77,7 @@ class _RadioPageState extends State<RadioPage> {
   bool _isPowerOn = true;
   PlayerState? _playerState;
 
-  List<dynamic> _subdivisions = [];
+  List<Map<String, dynamic>> _subdivisions = [];
   String? _selectedSubdivision;
   List<dynamic> _filteredStations = [];
 
@@ -393,7 +393,7 @@ class _RadioPageState extends State<RadioPage> {
     });
     try {
       final response = await http.get(Uri.parse('https://all.api.radio-browser.info/json/servers'))
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final servers = json.decode(response.body) as List;
         if (servers.isNotEmpty) {
@@ -426,7 +426,7 @@ class _RadioPageState extends State<RadioPage> {
     });
     try {
       final response = await http.get(Uri.parse('$_apiBaseUrl/json/countries'))
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         if (!mounted) return;
         final List<dynamic> countries = json.decode(response.body);
@@ -468,7 +468,7 @@ class _RadioPageState extends State<RadioPage> {
     if (fetchedStations == null) {
       try {
         final response = await http.get(Uri.parse('$_apiBaseUrl/json/stations/bycountrycodeexact/$countryCode'))
-            .timeout(const Duration(seconds: 20));
+            .timeout(const Duration(seconds: 30));
         if (response.statusCode == 200) {
           fetchedStations = json.decode(response.body);
           // Save to cache
@@ -501,7 +501,7 @@ class _RadioPageState extends State<RadioPage> {
     final List<String> subdivisionNames = stateSet.toList();
     subdivisionNames.sort();
 
-    final List<dynamic> subdivisions = subdivisionNames.map((name) {
+    final List<Map<String, dynamic>> subdivisions = subdivisionNames.map((name) {
       return <String, dynamic>{
         'name': name,
         'stationcount': onlineStations.where((s) => s['state'] == name).length,
@@ -769,7 +769,7 @@ class _RadioPageState extends State<RadioPage> {
                                             : Border.all(color: Colors.black26, width: 1),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.black.withOpacity(0.2),
+                                            color: Colors.black.withValues(alpha: 0.2),
                                             blurRadius: 4,
                                             offset: const Offset(0, 2),
                                           )
@@ -870,8 +870,8 @@ class _RadioPageState extends State<RadioPage> {
                                       }
                                     });
                                   },
-                                  items: _subdivisions.map<DropdownMenuItem<String>>((dynamic subdivision) {
-                                    final String name = subdivision['name'].toString();
+                                  items: _subdivisions.map<DropdownMenuItem<String>>((Map<String, dynamic> subdivision) {
+                                    final String name = subdivision['name'] as String;
                                     final int stationCount = subdivision['stationcount'] as int;
                                     return DropdownMenuItem<String>(
                                       value: name,
