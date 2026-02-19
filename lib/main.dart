@@ -18,6 +18,23 @@ import 'package:path_provider/path_provider.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Configure global audio context for background playback
+  await AudioPlayer.global.setAudioContext(AudioContext(
+    android: const AudioContextAndroid(
+      isSpeakerphoneOn: false,
+      stayAwake: true,
+      contentType: AndroidContentType.music,
+      usageType: AndroidUsageType.media,
+      audioFocus: AndroidAudioFocus.gain,
+    ),
+    iOS: AudioContextIOS(
+      category: AVAudioSessionCategory.playback,
+      options: {
+        AVAudioSessionOptions.mixWithOthers,
+      },
+    ),
+  ));
+
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     await windowManager.ensureInitialized();
     WindowOptions windowOptions = const WindowOptions(
