@@ -1,0 +1,13 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/Users/windows/StudioProjects/cfrn/build/windows/x64/cmake_install.cmake",
+		"C:/Users/windows/StudioProjects/cfrn/build/windows/x64/flutter/cmake_install.cmake",
+		"C:/Users/windows/StudioProjects/cfrn/build/windows/x64/runner/cmake_install.cmake",
+		"C:/Users/windows/StudioProjects/cfrn/build/windows/x64/plugins/audioplayers_windows/cmake_install.cmake",
+		"C:/Users/windows/StudioProjects/cfrn/build/windows/x64/plugins/screen_retriever_windows/cmake_install.cmake",
+		"C:/Users/windows/StudioProjects/cfrn/build/windows/x64/plugins/url_launcher_windows/cmake_install.cmake",
+		"C:/Users/windows/StudioProjects/cfrn/build/windows/x64/plugins/window_manager/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
