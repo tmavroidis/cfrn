@@ -2,8 +2,6 @@
 
 Canada first radio ntm
 
-## Getting Started
+## Listen to radio stations from around the world
 
-This project is a starting point for a web radio app
-
-this app was completely developed using gemini and android studio
+This app was completely developed using gemini AI and android studio
