@@ -107,10 +107,14 @@ class _RadioPageState extends State<RadioPage> {
   bool _isTuning = false;
   double _needlePosition = 0.0;
 
+  double _volume = 0.7;
+  int _presetKnobIndex = 0;
+
   @override
   void initState() {
     super.initState();
     _initPrefs();
+    _audioPlayer.setVolume(_volume);
     _audioPlayer.onPlayerStateChanged.listen((PlayerState s) {
       if (!mounted) return;
       setState(() {
@@ -579,6 +583,18 @@ class _RadioPageState extends State<RadioPage> {
     });
   }
 
+  void _playPreset(int index) {
+    if (_favouriteStations.isEmpty || index >= _favouriteStations.length) return;
+    final station = _favouriteStations[index];
+    final filteredIdx = _filteredStations.indexWhere((s) => s['stationuuid'] == station['stationuuid']);
+    double? pos;
+    if (filteredIdx >= 0) {
+      pos = filteredIdx / (_filteredStations.length > 1 ? _filteredStations.length - 1 : 1);
+    }
+    _playStation(station['url_resolved'], station['name'], station['country'],
+        needlePos: pos, favicon: station['favicon'], homepage: station['homepage']);
+  }
+
   void _onStationTuned(int index) {
     if (_filteredStations.isNotEmpty && index < _filteredStations.length) {
       final station = _filteredStations[index];
@@ -734,8 +750,54 @@ class _RadioPageState extends State<RadioPage> {
                       const SizedBox(height: 20),
                       if (_favouriteStations.isNotEmpty)
                         Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 16.0),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  RotaryKnob(
+                                    label: 'VOLUME',
+                                    value: _volume,
+                                    onChanged: (val) {
+                                      setState(() {
+                                        _volume = val;
+                                        _audioPlayer.setVolume(_volume);
+                                      });
+                                    },
+                                  ),
+                                  Column(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black87,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        constraints: const BoxConstraints(maxWidth: 150),
+                                        child: Text(
+                                          _favouriteStations[_presetKnobIndex]['name'],
+                                          style: GoogleFonts.orbitron(color: Colors.greenAccent, fontSize: 10),
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      RotaryKnob(
+                                        label: 'PRESETS',
+                                        value: _presetKnobIndex / (_favouriteStations.length > 1 ? _favouriteStations.length - 1 : 1),
+                                        onChanged: (val) {
+                                          setState(() {
+                                            _presetKnobIndex = (val * (_favouriteStations.length - 1)).round();
+                                          });
+                                        },
+                                        onTap: () => _playPreset(_presetKnobIndex),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -1153,6 +1215,83 @@ class _RotaryDialState extends State<RotaryDial> with SingleTickerProviderStateM
           ),
         );
       },
+    );
+  }
+}
+
+class RotaryKnob extends StatelessWidget {
+  final double value;
+  final ValueChanged<double> onChanged;
+  final VoidCallback? onTap;
+  final String label;
+
+  const RotaryKnob({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.onTap,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.brown)),
+        const SizedBox(height: 4),
+        GestureDetector(
+          onPanUpdate: (details) {
+            // Calculate the angle based on touch position relative to center
+            final RenderBox renderBox = context.findRenderObject() as RenderBox;
+            final center = renderBox.size.center(Offset.zero);
+            final localPos = details.localPosition;
+            
+            final double angle = atan2(localPos.dy - center.dy, localPos.dx - center.dx);
+            // Normalize angle to 0.0 - 1.0 range (matching the pi*0.8 sweep)
+            double normalized = (angle + (pi * 0.8)) / (2 * pi * 0.8);
+            onChanged(normalized.clamp(0.0, 1.0));
+          },
+          onTap: onTap,
+          child: Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.grey[400],
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 4, offset: const Offset(0, 2)),
+              ],
+              border: Border.all(color: Colors.black54, width: 2),
+              gradient: LinearGradient(
+                colors: [Colors.grey[300]!, Colors.grey[600]!],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: Stack(
+              children: [
+                Center(
+                  child: Transform.rotate(
+                    angle: (value * 2 * pi * 0.8) - (pi * 0.8),
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 4),
+                        width: 4,
+                        height: 15,
+                        decoration: BoxDecoration(
+                          color: Colors.red[900],
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
