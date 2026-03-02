@@ -49,7 +49,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Retro Radio',
+      title: 'Web Radio',
       theme: ThemeData(
         primarySwatch: Colors.brown,
         scaffoldBackgroundColor: Colors.brown[100],

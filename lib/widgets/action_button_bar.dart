@@ -20,13 +20,13 @@ class ActionButtonBar extends StatelessWidget {
         IconButton(
           icon: const Icon(Icons.file_download),
           onPressed: onExport,
-          tooltip: 'Export',
+          tooltip: 'Save Presets',
         ),
         const SizedBox(width: 15),
         IconButton(
           icon: const Icon(Icons.file_upload),
           onPressed: onImport,
-          tooltip: 'Import',
+          tooltip: 'Restore Presets',
         ),
         const SizedBox(width: 15),
         IconButton(

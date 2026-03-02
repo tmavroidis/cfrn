@@ -38,7 +38,7 @@ class RadioAppBar extends StatelessWidget implements PreferredSizeWidget {
           const SizedBox(width: 10),
           Flexible(
             child: Text(
-              'Retro Radio',
+              'Web Radio',
               style: GoogleFonts.bungeeInline(),
               overflow: TextOverflow.ellipsis,
             ),
