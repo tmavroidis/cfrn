@@ -27,13 +27,39 @@ class VolumePresetControl extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          RotaryKnob(
-            label: 'VOLUME',
-            value: volume,
-            onChanged: onVolumeChanged,
+          Expanded(
+            child: Column(
+              children: [
+                Text(
+                  'VOLUME',
+                  style: GoogleFonts.orbitron(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.brown,
+                  ),
+                ),
+                Slider(
+                  value: volume,
+                  onChanged: onVolumeChanged,
+                  min: 0.0,
+                  max: 1.0,
+                  activeColor: Colors.brown,
+                  inactiveColor: Colors.brown[200],
+                ),
+                Text(
+                  '${(volume * 100).round()}%',
+                  style: GoogleFonts.orbitron(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.brown,
+                  ),
+                ),
+              ],
+            ),
           ),
+          const SizedBox(width: 16),
           Column(
             children: [
               Container(

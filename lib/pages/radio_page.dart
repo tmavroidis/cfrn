@@ -66,7 +66,6 @@ class _RadioPageState extends State<RadioPage> {
   void initState() {
     super.initState();
     _initPrefs();
-    _audioPlayer.setVolume(_volume);
     _audioPlayer.onPlayerStateChanged.listen((PlayerState s) {
       if (!mounted) return;
       setState(() {
@@ -82,6 +81,8 @@ class _RadioPageState extends State<RadioPage> {
   Future<void> _initPrefs() async {
     _prefs = await SharedPreferences.getInstance();
     _loadFavourites();
+    _loadSettings();
+    _loadLastStation();
   }
 
   void _loadFavourites() {
@@ -98,6 +99,31 @@ class _RadioPageState extends State<RadioPage> {
           }));
         }
       });
+    }
+  }
+
+  void _loadSettings() {
+    setState(() {
+      _volume = _prefs?.getDouble('volume') ?? 0.7;
+      _presetKnobIndex = _prefs?.getInt('preset_knob_index') ?? 0;
+    });
+    _audioPlayer.setVolume(_volume);
+  }
+
+  void _loadLastStation() {
+    final String? url = _prefs?.getString('last_station_url');
+    final String? name = _prefs?.getString('last_station_name');
+    final String? country = _prefs?.getString('last_station_country');
+    final String? favicon = _prefs?.getString('last_station_favicon');
+    final String? homepage = _prefs?.getString('last_station_homepage');
+    final double? needlePos = _prefs?.getDouble('last_needle_pos');
+
+    if (url != null && name != null && country != null) {
+      _playStation(url, name, country, 
+          needlePos: needlePos, 
+          favicon: (favicon != null && favicon.isNotEmpty) ? favicon : null, 
+          homepage: (homepage != null && homepage.isNotEmpty) ? homepage : null,
+          saveToPrefs: false);
     }
   }
 
@@ -494,7 +520,7 @@ class _RadioPageState extends State<RadioPage> {
     );
   }
 
-  void _playStation(String url, String name, String country, {double? needlePos, String? favicon, String? homepage}) {
+  void _playStation(String url, String name, String country, {double? needlePos, String? favicon, String? homepage, bool saveToPrefs = true}) {
     if (!_isPowerOn) {
       setState(() {
         _isPowerOn = true;
@@ -516,6 +542,17 @@ class _RadioPageState extends State<RadioPage> {
       _currentlyPlayingFavicon = favicon;
       _currentlyPlayingHomepage = homepage;
     });
+
+    if (saveToPrefs) {
+      _prefs?.setString('last_station_url', url);
+      _prefs?.setString('last_station_name', name);
+      _prefs?.setString('last_station_country', country);
+      _prefs?.setString('last_station_favicon', favicon ?? '');
+      _prefs?.setString('last_station_homepage', homepage ?? '');
+      if (needlePos != null) {
+        _prefs?.setDouble('last_needle_pos', needlePos);
+      }
+    }
   }
 
   void _stopStation() {
@@ -615,9 +652,9 @@ class _RadioPageState extends State<RadioPage> {
                         needlePosition: _needlePosition,
                         onNeedleChanged: (pos) => setState(() => _needlePosition = pos),
                         backgroundColor: playerBackgroundColor,
-                        searchTerm: _selectedSubdivision != null && _selectedSubdivision != 'All' 
+                        searchTerm: _currentlyPlayingStation ?? (_selectedSubdivision != null && _selectedSubdivision != 'All' 
                             ? '$_selectedSubdivision, $_selectedCountryName'
-                            : _selectedCountryName,
+                            : _selectedCountryName),
                       ),
                       const SizedBox(height: 20),
                       TuningDisplay(
@@ -634,13 +671,16 @@ class _RadioPageState extends State<RadioPage> {
                             _volume = val;
                             _audioPlayer.setVolume(_volume);
                           });
+                          _prefs?.setDouble('volume', val);
                         },
                         presetKnobIndex: _presetKnobIndex,
                         favouriteStations: _favouriteStations,
                         onPresetKnobChanged: (val) {
+                          final newIndex = (val * (_favouriteStations.length - 1)).round();
                           setState(() {
-                            _presetKnobIndex = (val * (_favouriteStations.length - 1)).round();
+                            _presetKnobIndex = newIndex;
                           });
+                          _prefs?.setInt('preset_knob_index', newIndex);
                         },
                         onPresetTap: () => _playPreset(_presetKnobIndex),
                       ),
@@ -651,14 +691,23 @@ class _RadioPageState extends State<RadioPage> {
                         filteredStations: _filteredStations,
                         onReorder: _onReorder,
                         onToggleReorderMode: () => setState(() => _isReorderMode = !_isReorderMode),
-                        onPlayStation: (station, needlePos) => _playStation(
-                          station['url_resolved'],
-                          station['name'],
-                          station['country'],
-                          needlePos: needlePos,
-                          favicon: station['favicon'],
-                          homepage: station['homepage'],
-                        ),
+                        onPlayStation: (station, needlePos) {
+                          final idx = _favouriteStations.indexWhere((s) => s['stationuuid'] == station['stationuuid']);
+                          if (idx != -1) {
+                            setState(() {
+                              _presetKnobIndex = idx;
+                            });
+                            _prefs?.setInt('preset_knob_index', idx);
+                          }
+                          _playStation(
+                            station['url_resolved'],
+                            station['name'],
+                            station['country'],
+                            needlePos: needlePos,
+                            favicon: station['favicon'],
+                            homepage: station['homepage'],
+                          );
+                        },
                         onShowOptions: _showPresetOptions,
                         onRemovePreset: _confirmRemovePreset,
                       ),
