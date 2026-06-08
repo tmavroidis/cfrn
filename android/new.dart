@@ -523,8 +523,9 @@ class _RadioPageState extends State<RadioPage> {
       final dynamic lastCheck = station['lastcheckok'];
       if (lastCheck is bool) return lastCheck;
       if (lastCheck is int) return lastCheck == 1;
-      if (lastCheck is String)
+      if (lastCheck is String) {
         return lastCheck == '1' || lastCheck.toLowerCase() == 'true';
+      }
       return false;
     }).toList();
 
@@ -609,8 +610,9 @@ class _RadioPageState extends State<RadioPage> {
   }
 
   void _playPreset(int index) {
-    if (_favouriteStations.isEmpty || index >= _favouriteStations.length)
+    if (_favouriteStations.isEmpty || index >= _favouriteStations.length) {
       return;
+    }
     final station = _favouriteStations[index];
     final filteredIdx = _filteredStations.indexWhere((s) =>
     s['stationuuid'] == station['stationuuid']);
